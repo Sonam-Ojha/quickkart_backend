@@ -20,8 +20,16 @@ const adminWalletRoutes     = require('./src/routes/admin/wallet.routes');
 const adminSupportRoutes    = require('./src/routes/admin/support.routes');
 const adminDashboardRoutes  = require('./src/routes/admin/dashboard.routes');
 
-// ── Customer App Routes (used by mobile/web customer app) ─
-// const appAuthRoutes = require('./src/routes/app/auth.routes'); // coming soon
+// ── Customer App Routes (used by quickkart_customer web app) ─
+const appAuthRoutes       = require('./src/routes/app/auth.routes');
+const appHomeRoutes       = require('./src/routes/app/home.routes');
+const appProductRoutes    = require('./src/routes/app/products.routes');
+const appCategoryRoutes   = require('./src/routes/app/categories.routes');
+const appOrderRoutes      = require('./src/routes/app/orders.routes');
+const appAddressRoutes    = require('./src/routes/app/address.routes');
+const appWalletRoutes     = require('./src/routes/app/wallet.routes');
+const appCouponRoutes     = require('./src/routes/app/coupons.routes');
+const appProfileRoutes    = require('./src/routes/app/profile.routes');
 
 const app = express();
 
@@ -60,7 +68,15 @@ app.use('/api/admin/wallet',      adminWalletRoutes);
 app.use('/api/admin/support',     adminSupportRoutes);
 app.use('/api/admin/dashboard',   adminDashboardRoutes);
 
-// ── Customer App API (/api/app/...) ───────────────────────
-// app.use('/api/app/auth', appAuthRoutes); // coming soon
+// ── Customer App API (/api/app/...) ──────────────────────
+app.use('/api/app/auth',       appAuthRoutes);
+app.use('/api/app/home',       appHomeRoutes);
+app.use('/api/app/products',   appProductRoutes);
+app.use('/api/app/categories', appCategoryRoutes);
+app.use('/api/app/orders',     appOrderRoutes);
+app.use('/api/app/addresses',  appAddressRoutes);
+app.use('/api/app/wallet',     appWalletRoutes);
+app.use('/api/app/coupons',    appCouponRoutes);
+app.use('/api/app/profile',    appProfileRoutes);
 
 module.exports = app;
