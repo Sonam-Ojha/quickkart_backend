@@ -3,10 +3,10 @@ const Banner = require('../models/banner.model');
 const list = () =>
   Banner.findAll({ order: [['sort_order', 'ASC'], ['created_at', 'DESC']] });
 
-const create = async ({ title, subtitle, bannerImage, bgType, deeplink, sortOrder, validTo, isActive }) => {
+const create = async ({ title, subtitle, bannerImage, section, emoji, bgType, deeplink, sortOrder, validTo, isActive }) => {
   if (!title) throw new Error('Title is required');
   if (!bannerImage) throw new Error('Banner image URL is required');
-  return Banner.create({ title, subtitle, bannerImage, bgType, deeplink, sortOrder, validTo, isActive });
+  return Banner.create({ title, subtitle, bannerImage, section, emoji, bgType, deeplink, sortOrder, validTo, isActive });
 };
 
 const update = async (id, data) => {

@@ -19,6 +19,13 @@ const adminPaymentRoutes    = require('./src/routes/admin/payment.routes');
 const adminWalletRoutes     = require('./src/routes/admin/wallet.routes');
 const adminSupportRoutes    = require('./src/routes/admin/support.routes');
 const adminDashboardRoutes  = require('./src/routes/admin/dashboard.routes');
+const adminFaqRoutes        = require('./src/routes/admin/faq.routes');
+const adminSettingsRoutes   = require('./src/routes/admin/settings.routes');
+
+// ── Rider App Routes (used by quickkart_rider mobile/web app) ─
+const riderAuthRoutes    = require('./src/routes/rider/auth.routes');
+const riderProfileRoutes = require('./src/routes/rider/profile.routes');
+const riderOrderRoutes   = require('./src/routes/rider/orders.routes');
 
 // ── Customer App Routes (used by quickkart_customer web app) ─
 const appAuthRoutes       = require('./src/routes/app/auth.routes');
@@ -30,15 +37,22 @@ const appAddressRoutes    = require('./src/routes/app/address.routes');
 const appWalletRoutes     = require('./src/routes/app/wallet.routes');
 const appCouponRoutes     = require('./src/routes/app/coupons.routes');
 const appProfileRoutes    = require('./src/routes/app/profile.routes');
+const appFaqRoutes        = require('./src/routes/app/faq.routes');
+const appSettingsRoutes   = require('./src/routes/app/settings.routes');
+const appBannerRoutes     = require('./src/routes/app/banners.routes');
 
 const app = express();
 
 const corsOptions = {
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:5173',
-  ],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    // and any localhost port in development
+    if (!origin || origin.startsWith('http://localhost')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -67,6 +81,8 @@ app.use('/api/admin/payments',    adminPaymentRoutes);
 app.use('/api/admin/wallet',      adminWalletRoutes);
 app.use('/api/admin/support',     adminSupportRoutes);
 app.use('/api/admin/dashboard',   adminDashboardRoutes);
+app.use('/api/admin/faqs',        adminFaqRoutes);
+app.use('/api/admin/settings',    adminSettingsRoutes);
 
 // ── Customer App API (/api/app/...) ──────────────────────
 app.use('/api/app/auth',       appAuthRoutes);
@@ -78,5 +94,13 @@ app.use('/api/app/addresses',  appAddressRoutes);
 app.use('/api/app/wallet',     appWalletRoutes);
 app.use('/api/app/coupons',    appCouponRoutes);
 app.use('/api/app/profile',    appProfileRoutes);
+app.use('/api/app/faqs',       appFaqRoutes);
+app.use('/api/app/settings',   appSettingsRoutes);
+app.use('/api/app/banners',    appBannerRoutes);
+
+// ── Rider App API (/api/rider/...) ────────────────────────
+app.use('/api/rider/auth',    riderAuthRoutes);
+app.use('/api/rider/profile', riderProfileRoutes);
+app.use('/api/rider/orders',  riderOrderRoutes);
 
 module.exports = app;

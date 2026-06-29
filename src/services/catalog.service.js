@@ -56,8 +56,8 @@ const getAllProducts = async ({ categoryId, search, activeOnly, page = 1, limit 
   return { total: count, page: Number(page), limit: Number(limit), products: rows };
 };
 
-const createProduct = async ({ name, categoryId, brand, unit, mrp, price, imageUrl, isActive }) => {
-  return Product.create({ name, categoryId, brand, unit, mrp, price, imageUrl, isActive });
+const createProduct = async ({ name, categoryId, brand, unit, mrp, price, imageUrl, tag, isActive }) => {
+  return Product.create({ name, categoryId, brand, unit, mrp, price, imageUrl, tag: tag || null, isActive });
 };
 
 const updateProduct = async (id, data) => {

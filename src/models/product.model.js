@@ -9,7 +9,8 @@ const Product = sequelize.define('Product', {
   unit:       { type: DataTypes.STRING(30), allowNull: true },
   mrp:        { type: DataTypes.INTEGER, allowNull: false },
   price:      { type: DataTypes.INTEGER, allowNull: false },
-  imageUrl:   { type: DataTypes.STRING(255), allowNull: true, field: 'image_url' },
+  imageUrl:   { type: DataTypes.STRING(500), allowNull: true, field: 'image_url' },
+  tag:        { type: DataTypes.ENUM('deal', 'bestseller', 'new'), allowNull: true },
   isActive:   { type: DataTypes.BOOLEAN, defaultValue: true, field: 'is_active' },
 }, {
   tableName: 'products',
