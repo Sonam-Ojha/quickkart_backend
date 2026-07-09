@@ -8,8 +8,8 @@ const getAllCategories = async () => {
   return Category.findAll({ order: [['sort_order', 'ASC'], ['id', 'ASC']] });
 };
 
-const createCategory = async ({ name, parentId, icon, sortOrder, isActive }) => {
-  return Category.create({ name, parentId, icon, sortOrder, isActive });
+const createCategory = async ({ name, parentId, icon, imageUrl, sortOrder, isActive }) => {
+  return Category.create({ name, parentId, icon, imageUrl, sortOrder, isActive });
 };
 
 const updateCategory = async (id, data) => {

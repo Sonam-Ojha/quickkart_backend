@@ -13,9 +13,9 @@ const listCategories = async (req, res) => {
 
 const addCategory = async (req, res) => {
   try {
-    const { name, parentId, icon, sortOrder, isActive } = req.body;
+    const { name, parentId, icon, imageUrl, sortOrder, isActive } = req.body;
     if (!name) return res.status(400).json({ message: 'name is required' });
-    const category = await svc.createCategory({ name, parentId, icon, sortOrder, isActive });
+    const category = await svc.createCategory({ name, parentId, icon, imageUrl, sortOrder, isActive });
     res.status(201).json({ message: 'Category created', category });
   } catch (err) {
     res.status(400).json({ message: err.message });

@@ -6,6 +6,7 @@ const Category = sequelize.define('Category', {
   name:      { type: DataTypes.STRING(80), allowNull: false },
   parentId:  { type: DataTypes.INTEGER, allowNull: true, field: 'parent_id', references: { model: 'categories', key: 'id' } },
   icon:      { type: DataTypes.STRING(255), allowNull: true },
+  imageUrl:  { type: DataTypes.STRING(500), allowNull: true, field: 'image_url' },
   sortOrder: { type: DataTypes.INTEGER, defaultValue: 0, field: 'sort_order' },
   isActive:  { type: DataTypes.BOOLEAN, defaultValue: true, field: 'is_active' },
 }, {

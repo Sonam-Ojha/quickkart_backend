@@ -26,6 +26,9 @@ require('./src/models/payment.model');          // → orders
 require('./src/models/wallet-transaction.model'); // → users
 require('./src/models/support-ticket.model');   // → users, orders
 require('./src/models/support-message.model');  // → support_tickets
+require('./src/models/wishlist.model');         // → products, users
+require('./src/models/cart-item.model');        // → users
+require('./src/models/membership.model');       // → users
 
 const PORT = process.env.PORT || 4000;
 

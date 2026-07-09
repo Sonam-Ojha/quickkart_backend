@@ -1,5 +1,6 @@
 const express = require('express');
-const cors = require('cors');
+const cors    = require('cors');
+const path    = require('path');
 
 // ── Admin Panel Routes (used by react-app admin panel) ────
 const adminAuthRoutes    = require('./src/routes/admin/auth.routes');
@@ -21,6 +22,7 @@ const adminSupportRoutes    = require('./src/routes/admin/support.routes');
 const adminDashboardRoutes  = require('./src/routes/admin/dashboard.routes');
 const adminFaqRoutes        = require('./src/routes/admin/faq.routes');
 const adminSettingsRoutes   = require('./src/routes/admin/settings.routes');
+const adminUploadRoutes     = require('./src/routes/admin/upload.routes');
 
 // ── Rider App Routes (used by quickkart_rider mobile/web app) ─
 const riderAuthRoutes    = require('./src/routes/rider/auth.routes');
@@ -40,6 +42,9 @@ const appProfileRoutes    = require('./src/routes/app/profile.routes');
 const appFaqRoutes        = require('./src/routes/app/faq.routes');
 const appSettingsRoutes   = require('./src/routes/app/settings.routes');
 const appBannerRoutes     = require('./src/routes/app/banners.routes');
+const appWishlistRoutes   = require('./src/routes/app/wishlist.routes');
+const appCartRoutes       = require('./src/routes/app/cart.routes');
+const appMembershipRoutes = require('./src/routes/app/membership.routes');
 
 const app = express();
 
@@ -63,6 +68,9 @@ app.options('*', cors(corsOptions));
 
 app.use(express.json());
 
+// Serve uploaded images as static files
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
+
 // ── Admin Panel API (/api/admin/...) ──────────────────────
 app.use('/api/admin/auth',      adminAuthRoutes);
 app.use('/api/admin/profile',   adminProfileRoutes);
@@ -83,6 +91,7 @@ app.use('/api/admin/support',     adminSupportRoutes);
 app.use('/api/admin/dashboard',   adminDashboardRoutes);
 app.use('/api/admin/faqs',        adminFaqRoutes);
 app.use('/api/admin/settings',    adminSettingsRoutes);
+app.use('/api/admin/upload',      adminUploadRoutes);
 
 // ── Customer App API (/api/app/...) ──────────────────────
 app.use('/api/app/auth',       appAuthRoutes);
@@ -97,6 +106,9 @@ app.use('/api/app/profile',    appProfileRoutes);
 app.use('/api/app/faqs',       appFaqRoutes);
 app.use('/api/app/settings',   appSettingsRoutes);
 app.use('/api/app/banners',    appBannerRoutes);
+app.use('/api/app/wishlist',   appWishlistRoutes);
+app.use('/api/app/cart',       appCartRoutes);
+app.use('/api/app/membership', appMembershipRoutes);
 
 // ── Rider App API (/api/rider/...) ────────────────────────
 app.use('/api/rider/auth',    riderAuthRoutes);
