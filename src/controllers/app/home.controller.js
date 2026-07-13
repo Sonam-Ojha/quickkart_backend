@@ -6,7 +6,7 @@ const { Op }   = require('sequelize');
 const getFeed = async (req, res) => {
   try {
     const [banners, categories, featured] = await Promise.all([
-      Banner.findAll({ where: { is_active: true }, order: [['display_order', 'ASC']], limit: 5 }),
+      Banner.findAll({ where: { is_active: true }, order: [['sort_order', 'ASC']], limit: 5 }),
       Category.findAll({ where: { is_active: true }, limit: 8 }),
       Product.findAll({ where: { is_active: true }, order: [['created_at', 'DESC']], limit: 20 }),
     ]);
