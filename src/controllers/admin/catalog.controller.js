@@ -49,6 +49,36 @@ const toggleCategory = async (req, res) => {
   }
 };
 
+const bulkCreateCategories = async (req, res) => {
+  try {
+    const { rows } = req.body;
+    if (!rows || !rows.length) return res.status(400).json({ message: 'rows array is required' });
+    const result = await svc.bulkCreateCategories(rows);
+    res.status(201).json({ message: `${result.created} categories created`, ...result });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
+
+const bulkUpdateCategories = async (req, res) => {
+  try {
+    const result = await svc.bulkUpdateCategories(req.body);
+    res.json({ message: `${result.updated} categories updated`, ...result });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
+
+const bulkDeleteCategories = async (req, res) => {
+  try {
+    const { ids } = req.body;
+    const result = await svc.bulkDeleteCategories(ids);
+    res.json({ message: `${result.deleted} categories deleted`, ...result });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
+
 // ── Products ─────────────────────────────────────────────
 
 const listProducts = async (req, res) => {
@@ -101,7 +131,28 @@ const toggleProduct = async (req, res) => {
   }
 };
 
+const bulkUpdateProducts = async (req, res) => {
+  try {
+    const result = await svc.bulkUpdateProducts(req.body);
+    res.json({ message: `${result.updated} products updated`, ...result });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
+
+const bulkDeleteProducts = async (req, res) => {
+  try {
+    const { ids } = req.body;
+    const result = await svc.bulkDeleteProducts(ids);
+    res.json({ message: `${result.deleted} products deleted`, ...result });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
+
 module.exports = {
   listCategories, addCategory, editCategory, removeCategory, toggleCategory,
+  bulkCreateCategories, bulkUpdateCategories, bulkDeleteCategories,
   listProducts, addProduct, editProduct, removeProduct, toggleProduct,
+  bulkUpdateProducts, bulkDeleteProducts,
 };

@@ -34,6 +34,57 @@ const toggleCategory = async (id) => {
   return cat;
 };
 
+// Bulk update: { ids, data } → same fields for all, OR { updates: [{id, ...fields}] } → per-row
+const bulkCreateCategories = async (rows) => {
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error('rows array is required');
+  const created = await Promise.all(
+    rows.map(({ name, parentId, icon, imageUrl, sortOrder, isActive }) =>
+      Category.create({ name, parentId: parentId || null, icon: icon || null, imageUrl: imageUrl || null, sortOrder: sortOrder || 0, isActive: isActive !== false }),
+    ),
+  );
+  return { created: created.length, categories: created };
+};
+
+const bulkUpdateCategories = async (payload) => {
+  const sequelize = Category.sequelize;
+
+  if (payload.updates && Array.isArray(payload.updates)) {
+    // Per-row update
+    const results = await Promise.all(
+      payload.updates.map(async ({ id, ...fields }) => {
+        const cat = await Category.findByPk(id);
+        if (!cat) return null;
+        await cat.update(fields);
+        return cat;
+      }),
+    );
+    return { updated: results.filter(Boolean).length };
+  }
+
+  const { ids, data } = payload;
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    throw new Error('ids array is required');
+  }
+  if (!data || Object.keys(data).length === 0) {
+    throw new Error('data object with fields to update is required');
+  }
+  const [count] = await Category.update(data, { where: { id: { [Op.in]: ids } } });
+  return { updated: count };
+};
+
+const bulkDeleteCategories = async (ids) => {
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    throw new Error('ids array is required');
+  }
+  // Block delete if any category has products
+  const productCount = await Product.count({ where: { categoryId: { [Op.in]: ids } } });
+  if (productCount > 0) {
+    throw new Error(`Cannot delete — ${productCount} products exist in selected categories`);
+  }
+  const count = await Category.destroy({ where: { id: { [Op.in]: ids } } });
+  return { deleted: count };
+};
+
 // ── Products ─────────────────────────────────────────────
 
 const getAllProducts = async ({ categoryId, search, activeOnly, page = 1, limit = 20 }) => {
@@ -80,7 +131,42 @@ const toggleProduct = async (id) => {
   return product;
 };
 
+// Bulk update: { ids, data } → same fields for all, OR { updates: [{id, ...fields}] } → per-row
+const bulkUpdateProducts = async (payload) => {
+  if (payload.updates && Array.isArray(payload.updates)) {
+    const results = await Promise.all(
+      payload.updates.map(async ({ id, ...fields }) => {
+        const p = await Product.findByPk(id);
+        if (!p) return null;
+        await p.update(fields);
+        return p;
+      }),
+    );
+    return { updated: results.filter(Boolean).length };
+  }
+
+  const { ids, data } = payload;
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    throw new Error('ids array is required');
+  }
+  if (!data || Object.keys(data).length === 0) {
+    throw new Error('data object with fields to update is required');
+  }
+  const [count] = await Product.update(data, { where: { id: { [Op.in]: ids } } });
+  return { updated: count };
+};
+
+const bulkDeleteProducts = async (ids) => {
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    throw new Error('ids array is required');
+  }
+  const count = await Product.destroy({ where: { id: { [Op.in]: ids } } });
+  return { deleted: count };
+};
+
 module.exports = {
   getAllCategories, createCategory, updateCategory, deleteCategory, toggleCategory,
+  bulkCreateCategories, bulkUpdateCategories, bulkDeleteCategories,
   getAllProducts, createProduct, updateProduct, deleteProduct, toggleProduct,
+  bulkUpdateProducts, bulkDeleteProducts,
 };
