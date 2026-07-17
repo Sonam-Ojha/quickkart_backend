@@ -16,6 +16,7 @@ router.patch('/categories/:id/toggle',   authenticate, ctrl.toggleCategory);
 // Products
 router.get('/products',                authenticate, ctrl.listProducts);
 router.post('/products',               authenticate, ctrl.addProduct);
+router.post('/products/bulk-create',   authenticate, ctrl.bulkCreateProducts);
 router.patch('/products/bulk',         authenticate, ctrl.bulkUpdateProducts);
 router.delete('/products/bulk',        authenticate, ctrl.bulkDeleteProducts);
 router.put('/products/:id',            authenticate, ctrl.editProduct);

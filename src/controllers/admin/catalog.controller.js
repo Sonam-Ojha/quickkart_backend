@@ -131,6 +131,17 @@ const toggleProduct = async (req, res) => {
   }
 };
 
+const bulkCreateProducts = async (req, res) => {
+  try {
+    const { rows } = req.body;
+    if (!rows?.length) return res.status(400).json({ message: 'rows array is required' });
+    const result = await svc.bulkCreateProducts(rows);
+    res.status(201).json({ message: `${result.created} products created`, ...result });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
+
 const bulkUpdateProducts = async (req, res) => {
   try {
     const result = await svc.bulkUpdateProducts(req.body);
@@ -154,5 +165,5 @@ module.exports = {
   listCategories, addCategory, editCategory, removeCategory, toggleCategory,
   bulkCreateCategories, bulkUpdateCategories, bulkDeleteCategories,
   listProducts, addProduct, editProduct, removeProduct, toggleProduct,
-  bulkUpdateProducts, bulkDeleteProducts,
+  bulkCreateProducts, bulkUpdateProducts, bulkDeleteProducts,
 };

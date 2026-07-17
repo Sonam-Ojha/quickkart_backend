@@ -132,6 +132,20 @@ const toggleProduct = async (id) => {
 };
 
 // Bulk update: { ids, data } → same fields for all, OR { updates: [{id, ...fields}] } → per-row
+const bulkCreateProducts = async (rows) => {
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error('rows array is required');
+  const created = await Promise.all(
+    rows.map(({ name, categoryId, brand, unit, mrp, price, imageUrl, tag, isActive }) =>
+      Product.create({
+        name, categoryId, brand: brand || null, unit: unit || null,
+        mrp: Math.round(Number(mrp)), price: Math.round(Number(price)),
+        imageUrl: imageUrl || null, tag: tag || null, isActive: isActive !== false,
+      }),
+    ),
+  );
+  return { created: created.length, products: created };
+};
+
 const bulkUpdateProducts = async (payload) => {
   if (payload.updates && Array.isArray(payload.updates)) {
     const results = await Promise.all(
@@ -168,5 +182,5 @@ module.exports = {
   getAllCategories, createCategory, updateCategory, deleteCategory, toggleCategory,
   bulkCreateCategories, bulkUpdateCategories, bulkDeleteCategories,
   getAllProducts, createProduct, updateProduct, deleteProduct, toggleProduct,
-  bulkUpdateProducts, bulkDeleteProducts,
+  bulkCreateProducts, bulkUpdateProducts, bulkDeleteProducts,
 };
