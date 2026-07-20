@@ -22,6 +22,8 @@ const updateCategory = async (id, data) => {
 const deleteCategory = async (id) => {
   const cat = await Category.findByPk(id);
   if (!cat) throw new Error('Category not found');
+  const childCount = await Category.count({ where: { parentId: id } });
+  if (childCount > 0) throw new Error(`Cannot delete — ${childCount} sub-categories exist under this category. Delete sub-categories first.`);
   const productCount = await Product.count({ where: { categoryId: id } });
   if (productCount > 0) throw new Error(`Cannot delete — ${productCount} products use this category`);
   await cat.destroy();
