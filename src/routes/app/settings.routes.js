@@ -12,7 +12,7 @@ const DEFAULTS = {
   support_phone:   '1800-XXX-XXXX (Toll Free)',
   support_email:   'help@quickkart.in',
   company_address: 'Noida, Uttar Pradesh',
-  copyright_text:  '© 2026 QuickKart Technologies Pvt. Ltd. All rights reserved.',
+  copyright_text:  '© 2026 Jhatpats Technologies Pvt. Ltd. All rights reserved.',
   footer_badge:    '10-minute delivery · 30,000+ products',
 };
 

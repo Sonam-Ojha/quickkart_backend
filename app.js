@@ -45,6 +45,8 @@ const appBannerRoutes     = require('./src/routes/app/banners.routes');
 const appWishlistRoutes   = require('./src/routes/app/wishlist.routes');
 const appCartRoutes       = require('./src/routes/app/cart.routes');
 const appMembershipRoutes = require('./src/routes/app/membership.routes');
+const appLocationRoutes   = require('./src/routes/app/location.routes');
+const appOtpRoutes        = require('./src/routes/app/otp.routes');
 
 const app = express();
 
@@ -109,6 +111,8 @@ app.use('/api/app/banners',    appBannerRoutes);
 app.use('/api/app/wishlist',   appWishlistRoutes);
 app.use('/api/app/cart',       appCartRoutes);
 app.use('/api/app/membership', appMembershipRoutes);
+app.use('/api/app/location',  appLocationRoutes);
+app.use('/api/app/otp',       appOtpRoutes);
 
 // ── Rider App API (/api/rider/...) ────────────────────────
 app.use('/api/rider/auth',    riderAuthRoutes);

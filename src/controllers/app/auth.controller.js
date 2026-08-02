@@ -94,4 +94,44 @@ const refresh = async (req, res) => {
   }
 };
 
-module.exports = { register, login, refresh };
+// OTP Login — verify OTP then return token (find or create user)
+const otpService = require('../../services/otp.service');
+
+const otpLogin = async (req, res) => {
+  try {
+    const { mobile, email, otp } = req.body;
+    const key = mobile || email;
+    if (!key || !otp) {
+      return res.status(400).json({ message: 'mobile/email and otp are required' });
+    }
+
+    // Verify OTP
+    const result = otpService.verifyOtp(key, otp);
+    if (!result.valid) {
+      return res.status(400).json({ message: result.reason });
+    }
+
+    // Find or create user
+    const where = mobile ? { mobile } : { email };
+    let user = await User.findOne({ where: { ...where, role: 'user' } });
+    if (!user) {
+      const randomPass = await bcrypt.hash(Math.random().toString(36), 10);
+      user = await User.create({
+        name:     mobile ? `User ${mobile.slice(-4)}` : (email.split('@')[0] || 'User'),
+        mobile:   mobile || null,
+        email:    email  || null,
+        password: randomPass,
+        role:     'user',
+      });
+    }
+
+    return res.json({
+      token: signToken(user),
+      user: { id: user.id, name: user.name, mobile: user.mobile, email: user.email, walletBalance: user.walletBalance },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { register, login, refresh, otpLogin };
