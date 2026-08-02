@@ -17,7 +17,39 @@ const formatProduct = (p) => ({
 const list = async (req, res) => {
   try {
     const categories = await Category.findAll({ where: { is_active: true }, order: [['name', 'ASC']] });
-    return res.json(categories);
+
+    const products = await Product.findAll({
+      where: { isActive: true },
+      attributes: ['id', 'categoryId', 'imageUrl'],
+      order: [['created_at', 'DESC']],
+    });
+
+    const byCategory = {};
+    for (const p of products) {
+      if (!byCategory[p.categoryId]) byCategory[p.categoryId] = [];
+      byCategory[p.categoryId].push(p);
+    }
+
+    // Parent categories carry no products directly — their items live on
+    // sub-categories — so roll each parent's preview up from its children.
+    const childrenOf = {};
+    for (const c of categories) {
+      if (c.parentId == null) continue;
+      if (!childrenOf[c.parentId]) childrenOf[c.parentId] = [];
+      childrenOf[c.parentId].push(c.id);
+    }
+    const subtreeIds = (id) => [id, ...(childrenOf[id] || []).flatMap(subtreeIds)];
+
+    const result = categories.map((c) => {
+      const items = subtreeIds(c.id).flatMap((id) => byCategory[id] || []);
+      return {
+        ...c.toJSON(),
+        productCount:  items.length,
+        previewImages: items.slice(0, 4).map((p) => p.imageUrl).filter(Boolean),
+      };
+    });
+
+    return res.json(result);
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
