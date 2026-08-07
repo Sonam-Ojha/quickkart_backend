@@ -111,9 +111,9 @@ const otpLogin = async (req, res) => {
       return res.status(400).json({ message: result.reason });
     }
 
-    // Find or create user
+    // Find existing user by email or mobile (no role filter — avoids unique constraint clash)
     const where = mobile ? { mobile } : { email };
-    let user = await User.findOne({ where: { ...where, role: 'user' } });
+    let user = await User.findOne({ where });
     if (!user) {
       const randomPass = await bcrypt.hash(Math.random().toString(36), 10);
       user = await User.create({
@@ -127,9 +127,10 @@ const otpLogin = async (req, res) => {
 
     return res.json({
       token: signToken(user),
-      user: { id: user.id, name: user.name, mobile: user.mobile, email: user.email, walletBalance: user.walletBalance },
+      user: { id: user.id, name: user.name, mobile: user.mobile, email: user.email, walletBalance: user.walletBalance ?? 0 },
     });
   } catch (err) {
+    console.error('[OTP LOGIN ERROR]', err.message);
     return res.status(500).json({ message: err.message });
   }
 };

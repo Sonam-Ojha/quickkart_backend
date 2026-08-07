@@ -113,6 +113,7 @@ app.use('/api/app/cart',       appCartRoutes);
 app.use('/api/app/membership', appMembershipRoutes);
 app.use('/api/app/location',  appLocationRoutes);
 app.use('/api/app/otp',       appOtpRoutes);
+app.use('/api/app/payments',  require('./src/routes/app/payment.routes'));
 
 // ── Rider App API (/api/rider/...) ────────────────────────
 app.use('/api/rider/auth',    riderAuthRoutes);

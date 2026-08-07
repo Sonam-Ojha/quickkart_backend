@@ -1,7 +1,9 @@
 const Order         = require('../../models/order.model');
 const OrderItem     = require('../../models/order-item.model');
 const OrderTimeline = require('../../models/order-timeline.model');
+const Payment       = require('../../models/payment.model');
 const Product       = require('../../models/product.model');
+const DarkStore     = require('../../models/darkstore.model');
 const sequelize     = require('../../../src/config/db');
 
 const list = async (req, res) => {
@@ -20,47 +22,66 @@ const list = async (req, res) => {
 const place = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { items, address_id, coupon_code, payment_method = 'cod' } = req.body;
+    const { items, address_id, coupon_code, payment_method = 'cod', delivery_fee: clientFee, handling_charge: clientHandling, discount = 0 } = req.body;
+
+    if (!items || items.length === 0) {
+      return res.status(400).json({ message: 'No items in order' });
+    }
 
     let subtotal = 0;
     for (const item of items) {
-      subtotal += item.price * item.qty;
+      subtotal += (item.price ?? 0) * (item.qty ?? 1);
     }
 
-    const delivery_fee     = subtotal >= 99 ? 0 : 25;
-    const handling_charge  = 5;
-    const total_amount     = subtotal + delivery_fee + handling_charge;
+    const delivery_fee    = clientFee    != null ? Number(clientFee)    : (subtotal >= 99 ? 0 : 25);
+    const handling_charge = clientHandling != null ? Number(clientHandling) : 5;
+    const total           = subtotal - Number(discount) + delivery_fee + handling_charge;
 
-    const order = await Order.create(
-      {
-        user_id: req.user.id,
-        address_id,
-        status: 'pending',
-        total_amount,
-        delivery_fee,
-        payment_method,
-      },
-      { transaction: t },
-    );
+    // Auto-pick first active dark store
+    const store = await DarkStore.findOne({ where: { is_active: true } });
+
+    const order = await Order.create({
+      customerId: req.user.id,
+      storeId:    store?.id ?? null,
+      addressId:  address_id ?? null,
+      status:     'pending',
+      subtotal,
+      deliveryFee: delivery_fee,
+      discount:    Number(discount),
+      total,
+    }, { transaction: t });
 
     await OrderItem.bulkCreate(
       items.map((i) => ({
-        order_id:   order.id,
-        product_id: i.product_id ?? i.id,
-        qty:        i.qty,
-        unit_price: i.price,
-        total_price: i.price * i.qty,
+        orderId:   order.id,
+        productId: i.product_id ?? i.id,
+        quantity:  i.qty ?? 1,
+        unitPrice: i.price,
+        total:     (i.price ?? 0) * (i.qty ?? 1),
       })),
       { transaction: t },
     );
 
-    await OrderTimeline.create({ order_id: order.id, status: 'pending', note: 'Order placed' }, { transaction: t });
+    await OrderTimeline.create({
+      orderId: order.id,
+      status:  'pending',
+      note:    'Order placed',
+    }, { transaction: t });
+
+    const gatewayMap = { cod: 'cod', upi: 'upi', card: 'razorpay', wallet: 'wallet' };
+    await Payment.create({
+      orderId: order.id,
+      gateway: gatewayMap[payment_method] ?? 'cod',
+      amount:  total,
+      status:  payment_method === 'cod' ? 'pending' : 'paid',
+    }, { transaction: t });
 
     await t.commit();
-    return res.status(201).json(order);
+    return res.status(201).json({ ...order.toJSON(), payment_method });
   } catch (err) {
     await t.rollback();
-    return res.status(500).json({ message: err.message });
+    console.error('[ORDER ERROR]', err.message, err.errors ?? '');
+    return res.status(500).json({ message: err.message, detail: err.errors?.map(e => e.message) });
   }
 };
 
