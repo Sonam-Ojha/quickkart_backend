@@ -56,55 +56,61 @@ async function sendOtpEmail(email) {
   return { success: true, dev: false };
 }
 
-// ── Send OTP via MSG91 SMS ────────────────────────────────────────────────────
+// ── Send OTP via Fast2SMS (no DLT required) ──────────────────────────────────
 async function sendOtpSms(mobile) {
   const otp = _generateOtp();
   _store.set(mobile, { otp, expiresAt: Date.now() + OTP_EXPIRY_MS });
 
-  const authKey = process.env.MSG91_AUTH_KEY;
-  if (!authKey) {
-    console.log(`[OTP DEV] mobile=${mobile} otp=${otp}`);
+  console.log(`\n[SMS DEBUG] mobile = ${mobile} | otp = ${otp}`);
+
+  const apiKey = process.env.FAST2SMS_API_KEY;
+  if (!apiKey) {
+    console.log(`[SMS DEBUG] FAST2SMS_API_KEY missing → DEV mode, SMS NOT sent`);
     return { success: true, dev: true };
   }
 
-  const payload = JSON.stringify({
-    template_id: process.env.MSG91_TEMPLATE_ID,
-    mobile: `91${mobile}`,
-    otp_length: 6,
-    otp_expiry: 10,
-    otp,
+  const params = new URLSearchParams({
+    authorization: apiKey,
+    route:         'q',
+    message:       `${otp} is your Jhatpats OTP. Valid for 10 minutes. Do not share.`,
+    language:      'english',
+    flash:         '0',
+    numbers:       mobile,
   });
+
+  console.log(`[SMS DEBUG] Calling Fast2SMS for ${mobile}...`);
 
   return new Promise((resolve, reject) => {
     const options = {
-      hostname: 'control.msg91.com',
-      path: '/api/v5/otp',
-      method: 'POST',
-      headers: {
-        authkey: authKey,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload),
-      },
+      hostname: 'www.fast2sms.com',
+      path:     `/dev/bulkV2?${params.toString()}`,
+      method:   'GET',
+      headers:  { 'cache-control': 'no-cache' },
     };
 
     const req = https.request(options, (res) => {
       let data = '';
       res.on('data', chunk => { data += chunk; });
       res.on('end', () => {
-        console.log('[MSG91 RAW]', res.statusCode, data);
+        console.log(`[SMS DEBUG] Fast2SMS status=${res.statusCode} response=${data}`);
         try {
           const json = JSON.parse(data);
-          if (json.type === 'success' || res.statusCode === 200) resolve({ success: true });
-          else reject(new Error(json.message || 'MSG91 error'));
+          if (json.return === true) resolve({ success: true });
+          else reject(new Error(json.message?.[0] || 'Fast2SMS error'));
         } catch {
-          reject(new Error('Invalid MSG91 response'));
+          reject(new Error('Invalid Fast2SMS response'));
         }
       });
     });
 
-    req.on('error', reject);
-    req.setTimeout(8000, () => { req.destroy(); reject(new Error('MSG91 timeout')); });
-    req.write(payload);
+    req.on('error', (err) => {
+      console.log(`[SMS DEBUG] Fast2SMS network error: ${err.message}`);
+      reject(err);
+    });
+    req.setTimeout(8000, () => {
+      req.destroy();
+      reject(new Error('Fast2SMS timeout'));
+    });
     req.end();
   });
 }
@@ -122,4 +128,42 @@ function verifyOtp(key, otp) {
   return { valid: true };
 }
 
-module.exports = { sendOtpEmail, sendOtpSms, verifyOtp };
+// ── Send plain SMS via Fast2SMS (for welcome/login/order notifications) ───────
+async function sendSms(mobile, message) {
+  const apiKey = process.env.FAST2SMS_API_KEY;
+  if (!apiKey || !mobile) {
+    console.log(`[SMS] DEV mode — would send to ${mobile}: ${message}`);
+    return;
+  }
+
+  const params = new URLSearchParams({
+    authorization: apiKey,
+    route:         'q',
+    message,
+    language:      'english',
+    flash:         '0',
+    numbers:       mobile,
+  });
+
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'www.fast2sms.com',
+      path:     `/dev/bulkV2?${params.toString()}`,
+      method:   'GET',
+      headers:  { 'cache-control': 'no-cache' },
+    };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        console.log(`[SMS] Sent to ${mobile} | status=${res.statusCode} | ${data}`);
+        resolve();
+      });
+    });
+    req.on('error', (err) => { console.log(`[SMS] Error: ${err.message}`); resolve(); });
+    req.setTimeout(8000, () => { req.destroy(); resolve(); });
+    req.end();
+  });
+}
+
+module.exports = { sendOtpEmail, sendOtpSms, sendSms, verifyOtp };

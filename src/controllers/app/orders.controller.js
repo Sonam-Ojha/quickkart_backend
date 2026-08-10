@@ -4,7 +4,10 @@ const OrderTimeline = require('../../models/order-timeline.model');
 const Payment       = require('../../models/payment.model');
 const Product       = require('../../models/product.model');
 const DarkStore     = require('../../models/darkstore.model');
+const Inventory     = require('../../models/inventory.model');
+const User          = require('../../models/user.model');
 const sequelize     = require('../../../src/config/db');
+const { sendSms }   = require('../../services/otp.service');
 
 const list = async (req, res) => {
   try {
@@ -40,6 +43,20 @@ const place = async (req, res) => {
     // Auto-pick first active dark store
     const store = await DarkStore.findOne({ where: { is_active: true } });
 
+    // Check + lock inventory for each item
+    for (const item of items) {
+      const productId = item.product_id ?? item.id;
+      const qty       = item.qty ?? 1;
+      const inv = await Inventory.findOne({
+        where: { productId, ...(store ? { storeId: store.id } : {}) },
+        lock: t.LOCK.UPDATE,
+        transaction: t,
+      });
+      if (!inv || inv.stockQty < qty) {
+        throw new Error(`Out of stock: product #${productId} (available: ${inv?.stockQty ?? 0}, requested: ${qty})`);
+      }
+    }
+
     const order = await Order.create({
       customerId: req.user.id,
       storeId:    store?.id ?? null,
@@ -68,7 +85,18 @@ const place = async (req, res) => {
       note:    'Order placed',
     }, { transaction: t });
 
-    const gatewayMap = { cod: 'cod', upi: 'upi', card: 'razorpay', wallet: 'wallet' };
+    // Deduct inventory
+    for (const item of items) {
+      const productId = item.product_id ?? item.id;
+      const qty       = item.qty ?? 1;
+      await Inventory.decrement('stockQty', {
+        by: qty,
+        where: { productId, ...(store ? { storeId: store.id } : {}) },
+        transaction: t,
+      });
+    }
+
+    const gatewayMap = { cod: 'cod', razorpay: 'razorpay' };
     await Payment.create({
       orderId: order.id,
       gateway: gatewayMap[payment_method] ?? 'cod',
@@ -77,6 +105,16 @@ const place = async (req, res) => {
     }, { transaction: t });
 
     await t.commit();
+
+    // Send order confirmation SMS
+    const customer = await User.findByPk(req.user.id, { attributes: ['mobile', 'name'] });
+    if (customer?.mobile) {
+      const payLabel = payment_method === 'cod' ? 'Cash on Delivery' : 'Online Payment';
+      sendSms(customer.mobile,
+        `Hi ${customer.name || 'there'}! Your Jhatpats order #${order.id} is placed. Total: Rs.${total}. Payment: ${payLabel}. We will deliver soon!`
+      ).catch(() => {});
+    }
+
     return res.status(201).json({ ...order.toJSON(), payment_method });
   } catch (err) {
     await t.rollback();

@@ -6,7 +6,10 @@ const OrderItem     = require('../../models/order-item.model');
 const OrderTimeline = require('../../models/order-timeline.model');
 const Payment       = require('../../models/payment.model');
 const DarkStore     = require('../../models/darkstore.model');
+const Inventory     = require('../../models/inventory.model');
+const User          = require('../../models/user.model');
 const sequelize     = require('../../../src/config/db');
+const { sendSms }   = require('../../services/otp.service');
 const { authenticateCustomer } = require('../../middlewares/customer.middleware');
 
 router.use(authenticateCustomer);
@@ -64,6 +67,20 @@ router.post('/razorpay/verify', async (req, res) => {
 
     const store = await DarkStore.findOne({ where: { is_active: true } });
 
+    // Check + lock inventory
+    for (const item of items) {
+      const productId = item.product_id ?? item.id;
+      const qty       = item.qty ?? 1;
+      const inv = await Inventory.findOne({
+        where: { productId, ...(store ? { storeId: store.id } : {}) },
+        lock: t.LOCK.UPDATE,
+        transaction: t,
+      });
+      if (!inv || inv.stockQty < qty) {
+        throw new Error(`Out of stock: product #${productId} (available: ${inv?.stockQty ?? 0}, requested: ${qty})`);
+      }
+    }
+
     const order = await Order.create({
       customerId:  req.user.id,
       storeId:     store?.id ?? null,
@@ -91,6 +108,15 @@ router.post('/razorpay/verify', async (req, res) => {
       note:    `Paid via Razorpay (${razorpay_payment_id})`,
     }, { transaction: t });
 
+    // Deduct inventory
+    for (const item of items) {
+      await Inventory.decrement('stockQty', {
+        by: item.qty ?? 1,
+        where: { productId: item.product_id ?? item.id, ...(store ? { storeId: store.id } : {}) },
+        transaction: t,
+      });
+    }
+
     await Payment.create({
       orderId: order.id,
       gateway: 'razorpay',
@@ -100,6 +126,15 @@ router.post('/razorpay/verify', async (req, res) => {
     }, { transaction: t });
 
     await t.commit();
+
+    // Send confirmation SMS
+    const customer = await User.findByPk(req.user.id, { attributes: ['mobile', 'name'] });
+    if (customer?.mobile) {
+      sendSms(customer.mobile,
+        `Hi ${customer.name || 'there'}! Your Jhatpats order #${order.id} is confirmed. Total: Rs.${total}. Paid via Razorpay. We will deliver soon!`
+      ).catch(() => {});
+    }
+
     return res.status(201).json({ ...order.toJSON(), payment_id: razorpay_payment_id });
   } catch (err) {
     await t.rollback();

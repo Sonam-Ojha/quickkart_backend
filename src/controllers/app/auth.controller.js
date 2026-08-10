@@ -114,15 +114,32 @@ const otpLogin = async (req, res) => {
     // Find existing user by email or mobile (no role filter — avoids unique constraint clash)
     const where = mobile ? { mobile } : { email };
     let user = await User.findOne({ where });
+    let isNewUser = false;
+
     if (!user) {
+      isNewUser = true;
       const randomPass = await bcrypt.hash(Math.random().toString(36), 10);
-      user = await User.create({
+      const createData = {
         name:     mobile ? `User ${mobile.slice(-4)}` : (email.split('@')[0] || 'User'),
-        mobile:   mobile || null,
-        email:    email  || null,
+        email:    email  || `m${mobile}@noemail.jhatpats.com`,
         password: randomPass,
         role:     'user',
-      });
+      };
+      if (mobile) createData.mobile = mobile;
+      user = await User.create(createData);
+    }
+
+    // Send welcome SMS to new users, login alert to existing users
+    if (mobile) {
+      if (isNewUser) {
+        otpService.sendSms(mobile,
+          `Welcome to Jhatpats! Your account has been created. Enjoy fast delivery in 10-30 minutes. Happy shopping!`
+        ).catch(() => {});
+      } else {
+        otpService.sendSms(mobile,
+          `You have successfully logged in to Jhatpats. If this wasn't you, contact us immediately.`
+        ).catch(() => {});
+      }
     }
 
     return res.json({
@@ -130,7 +147,7 @@ const otpLogin = async (req, res) => {
       user: { id: user.id, name: user.name, mobile: user.mobile, email: user.email, walletBalance: user.walletBalance ?? 0 },
     });
   } catch (err) {
-    console.error('[OTP LOGIN ERROR]', err.message);
+    console.error('[OTP LOGIN ERROR]', err.message, err.errors?.map(e => `${e.path}: ${e.message}`) ?? '');
     return res.status(500).json({ message: err.message });
   }
 };
