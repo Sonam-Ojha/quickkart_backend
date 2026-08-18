@@ -9,6 +9,8 @@ const Category = sequelize.define('Category', {
   imageUrl:  { type: DataTypes.STRING(500), allowNull: true, field: 'image_url' },
   sortOrder: { type: DataTypes.INTEGER, defaultValue: 0, field: 'sort_order' },
   isActive:  { type: DataTypes.BOOLEAN, defaultValue: true, field: 'is_active' },
+  showInFilter: { type: DataTypes.BOOLEAN, defaultValue: true, field: 'show_in_filter' },
+  showInGrid:   { type: DataTypes.BOOLEAN, defaultValue: true, field: 'show_in_grid' },
 }, {
   tableName: 'categories',
   timestamps: true,

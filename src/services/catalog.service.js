@@ -8,8 +8,8 @@ const getAllCategories = async () => {
   return Category.findAll({ order: [['sort_order', 'ASC'], ['id', 'ASC']] });
 };
 
-const createCategory = async ({ name, parentId, icon, imageUrl, sortOrder, isActive }) => {
-  return Category.create({ name, parentId, icon, imageUrl, sortOrder, isActive });
+const createCategory = async ({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid }) => {
+  return Category.create({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid });
 };
 
 const updateCategory = async (id, data) => {
@@ -40,8 +40,11 @@ const toggleCategory = async (id) => {
 const bulkCreateCategories = async (rows) => {
   if (!Array.isArray(rows) || rows.length === 0) throw new Error('rows array is required');
   const created = await Promise.all(
-    rows.map(({ name, parentId, icon, imageUrl, sortOrder, isActive }) =>
-      Category.create({ name, parentId: parentId || null, icon: icon || null, imageUrl: imageUrl || null, sortOrder: sortOrder || 0, isActive: isActive !== false }),
+    rows.map(({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid }) =>
+      Category.create({
+        name, parentId: parentId || null, icon: icon || null, imageUrl: imageUrl || null, sortOrder: sortOrder || 0, isActive: isActive !== false,
+        showInFilter: showInFilter !== false, showInGrid: showInGrid !== false,
+      }),
     ),
   );
   return { created: created.length, categories: created };
