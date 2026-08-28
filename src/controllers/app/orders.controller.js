@@ -5,6 +5,7 @@ const Payment       = require('../../models/payment.model');
 const Product       = require('../../models/product.model');
 const DarkStore     = require('../../models/darkstore.model');
 const Inventory     = require('../../models/inventory.model');
+const Rider         = require('../../models/rider.model');
 const User          = require('../../models/user.model');
 const sequelize     = require('../../../src/config/db');
 const { sendSms }   = require('../../services/otp.service');
@@ -43,7 +44,7 @@ const place = async (req, res) => {
     // Auto-pick first active dark store
     const store = await DarkStore.findOne({ where: { is_active: true } });
 
-    // Check + lock inventory for each item
+    // Check + lock inventory for each item (only block if record exists AND qty is insufficient)
     for (const item of items) {
       const productId = item.product_id ?? item.id;
       const qty       = item.qty ?? 1;
@@ -52,8 +53,9 @@ const place = async (req, res) => {
         lock: t.LOCK.UPDATE,
         transaction: t,
       });
-      if (!inv || inv.stockQty < qty) {
-        throw new Error(`Out of stock: product #${productId} (available: ${inv?.stockQty ?? 0}, requested: ${qty})`);
+      // If inventory record exists and stock is less than requested, block
+      if (inv && inv.stockQty < qty) {
+        throw new Error(`Out of stock: product #${productId} (available: ${inv.stockQty}, requested: ${qty})`);
       }
     }
 
@@ -85,15 +87,21 @@ const place = async (req, res) => {
       note:    'Order placed',
     }, { transaction: t });
 
-    // Deduct inventory
+    // Deduct inventory (only if record exists)
     for (const item of items) {
       const productId = item.product_id ?? item.id;
       const qty       = item.qty ?? 1;
-      await Inventory.decrement('stockQty', {
-        by: qty,
+      const invExists = await Inventory.findOne({
         where: { productId, ...(store ? { storeId: store.id } : {}) },
         transaction: t,
       });
+      if (invExists) {
+        await Inventory.decrement('stockQty', {
+          by: qty,
+          where: { productId, ...(store ? { storeId: store.id } : {}) },
+          transaction: t,
+        });
+      }
     }
 
     const gatewayMap = { cod: 'cod', razorpay: 'razorpay' };
@@ -128,8 +136,9 @@ const getById = async (req, res) => {
     const order = await Order.findOne({
       where: { id: req.params.id, user_id: req.user.id },
       include: [
-        { model: OrderItem, as: 'items', include: [{ model: Product, as: 'product' }] },
-        { model: OrderTimeline, as: 'timeline', order: [['created_at', 'ASC']] },
+        { model: OrderItem, as: 'items', include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'image_url', 'unit'] }] },
+        { model: OrderTimeline, as: 'timeline' },
+        { model: Rider, as: 'rider', attributes: ['id', 'name', 'mobile', 'vehicleType', 'vehicleNumber', 'rating', 'currentLat', 'currentLng', 'locationUpdatedAt'], required: false },
       ],
     });
     if (!order) return res.status(404).json({ message: 'Order not found' });
@@ -139,4 +148,19 @@ const getById = async (req, res) => {
   }
 };
 
-module.exports = { list, place, getById };
+const cancel = async (req, res) => {
+  try {
+    const order = await Order.findOne({ where: { id: req.params.id, user_id: req.user.id } });
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (!['pending', 'confirmed'].includes(order.status)) {
+      return res.status(400).json({ message: 'Order cannot be cancelled at this stage' });
+    }
+    await order.update({ status: 'cancelled' });
+    await OrderTimeline.create({ orderId: order.id, status: 'cancelled', note: req.body.reason || 'Cancelled by customer' });
+    return res.json({ message: 'Order cancelled successfully' });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { list, place, getById, cancel };

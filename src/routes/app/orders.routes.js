@@ -4,12 +4,9 @@ const { authenticateCustomer } = require('../../middlewares/customer.middleware'
 
 router.use(authenticateCustomer);
 
-// GET  /api/app/orders       — order history
-// POST /api/app/orders       — place new order
-// GET  /api/app/orders/:id   — order detail + tracking
-
-router.get('/',    ctrl.list);
-router.post('/',   ctrl.place);
-router.get('/:id', ctrl.getById);
+router.get('/',          ctrl.list);
+router.post('/',         ctrl.place);
+router.get('/:id',       ctrl.getById);
+router.patch('/:id/cancel', ctrl.cancel);
 
 module.exports = router;

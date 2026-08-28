@@ -49,4 +49,16 @@ const toggleOnline = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-module.exports = { getProfile, updateProfile, changePassword, toggleOnline };
+const updateLocation = async (req, res) => {
+  try {
+    const { lat, lng } = req.body;
+    if (lat == null || lng == null) return res.status(400).json({ message: 'lat and lng required' });
+    await Rider.update(
+      { currentLat: lat, currentLng: lng, locationUpdatedAt: new Date() },
+      { where: { id: req.rider.id } },
+    );
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+module.exports = { getProfile, updateProfile, changePassword, toggleOnline, updateLocation };

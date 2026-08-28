@@ -14,6 +14,9 @@ const Rider = sequelize.define('Rider', {
   totalDeliveries:  { type: DataTypes.INTEGER, defaultValue: 0, field: 'total_deliveries' },
   totalEarnings:    { type: DataTypes.INTEGER, defaultValue: 0, field: 'total_earnings' },
   status:           { type: DataTypes.ENUM('active', 'inactive', 'suspended'), defaultValue: 'active' },
+  currentLat:       { type: DataTypes.DECIMAL(9, 6), allowNull: true, field: 'current_lat' },
+  currentLng:       { type: DataTypes.DECIMAL(9, 6), allowNull: true, field: 'current_lng' },
+  locationUpdatedAt:{ type: DataTypes.DATE, allowNull: true, field: 'location_updated_at' },
 }, {
   tableName: 'riders',
   timestamps: true,
