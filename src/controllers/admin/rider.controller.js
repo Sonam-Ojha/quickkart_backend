@@ -1,6 +1,8 @@
 const bcrypt = require('bcryptjs');
 const svc    = require('../../services/rider.service');
 const Rider  = require('../../models/rider.model');
+const RiderDocument = require('../../models/rider-document.model');
+const { KYC_FIELD } = require('../rider/documents.controller');
 
 const list = async (req, res) => {
   try {
@@ -52,4 +54,44 @@ const setPassword = async (req, res) => {
   } catch (err) { res.status(400).json({ message: err.message }); }
 };
 
-module.exports = { list, add, edit, toggle, remove, setPassword };
+// ── KYC review ──────────────────────────────────────────────
+const listDocuments = async (req, res) => {
+  try {
+    const documents = await RiderDocument.findAll({ where: { riderId: req.params.id }, order: [['doc_type', 'ASC']] });
+    res.json({ documents });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+const reviewDocument = async (req, res) => {
+  try {
+    const { status, rejectionReason } = req.body;
+    if (!['verified', 'rejected'].includes(status)) {
+      return res.status(400).json({ message: "status must be 'verified' or 'rejected'" });
+    }
+    if (status === 'rejected' && !rejectionReason) {
+      return res.status(400).json({ message: 'rejectionReason is required when rejecting' });
+    }
+
+    const doc = await RiderDocument.findOne({ where: { id: req.params.docId, riderId: req.params.id } });
+    if (!doc) return res.status(404).json({ message: 'Document not found' });
+
+    await doc.update({ status, rejectionReason: status === 'rejected' ? rejectionReason : null, reviewedAt: new Date() });
+
+    const rider = await Rider.findByPk(req.params.id);
+    const field = KYC_FIELD[doc.docType];
+    if (field) await rider.update({ [field]: status });
+
+    // Clearing every required document is what activates a pending rider.
+    await rider.reload();
+    const allVerified = Object.values(KYC_FIELD).every(f => rider[f] === 'verified');
+    let activated = false;
+    if (allVerified && rider.status === 'pending_verification') {
+      await rider.update({ status: 'active' });
+      activated = true;
+    }
+
+    res.json({ message: `Document ${status}`, document: doc, riderStatus: rider.status, activated });
+  } catch (err) { res.status(400).json({ message: err.message }); }
+};
+
+module.exports = { list, add, edit, toggle, remove, setPassword, listDocuments, reviewDocument };

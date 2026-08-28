@@ -8,6 +8,8 @@ const OrderItem = sequelize.define('OrderItem', {
   quantity:  { type: DataTypes.INTEGER, allowNull: false },
   unitPrice: { type: DataTypes.INTEGER, allowNull: false, field: 'unit_price' },
   total:     { type: DataTypes.INTEGER, allowNull: false },
+  // Rider's pickup checklist at the store — flipped via the rider app.
+  picked:    { type: DataTypes.BOOLEAN, defaultValue: false },
 }, {
   tableName: 'order_items',
   timestamps: false,

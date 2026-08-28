@@ -13,8 +13,8 @@ const { sendSms }   = require('../../services/otp.service');
 const list = async (req, res) => {
   try {
     const orders = await Order.findAll({
-      where: { user_id: req.user.id },
-      include: [{ model: OrderItem, as: 'items', include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'image_url'] }] }],
+      where: { customerId: req.user.id },
+      include: [{ model: OrderItem, as: 'items', include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'imageUrl'] }] }],
       order: [['created_at', 'DESC']],
     });
     return res.json(orders);
@@ -59,6 +59,10 @@ const place = async (req, res) => {
       }
     }
 
+    // Code the customer reads out to the rider at handover. Minted here so it
+    // exists for the whole life of the order, not just once a rider is assigned.
+    const deliveryOtp = String(Math.floor(100000 + Math.random() * 900000));
+
     const order = await Order.create({
       customerId: req.user.id,
       storeId:    store?.id ?? null,
@@ -68,6 +72,7 @@ const place = async (req, res) => {
       deliveryFee: delivery_fee,
       discount:    Number(discount),
       total,
+      deliveryOtp,
     }, { transaction: t });
 
     await OrderItem.bulkCreate(
@@ -88,6 +93,16 @@ const place = async (req, res) => {
     }, { transaction: t });
 
     // Deduct inventory (only if record exists)
+    // Quick-commerce: confirm immediately so the order can reach riders. It
+    // used to sit at 'pending' until an admin flipped it by hand.
+    await order.update({ status: 'confirmed' }, { transaction: t });
+    await OrderTimeline.create({
+      orderId: order.id,
+      status:  'confirmed',
+      note:    'Auto-confirmed on placement',
+    }, { transaction: t });
+
+    // Deduct inventory
     for (const item of items) {
       const productId = item.product_id ?? item.id;
       const qty       = item.qty ?? 1;
@@ -119,9 +134,15 @@ const place = async (req, res) => {
     if (customer?.mobile) {
       const payLabel = payment_method === 'cod' ? 'Cash on Delivery' : 'Online Payment';
       sendSms(customer.mobile,
-        `Hi ${customer.name || 'there'}! Your Jhatpats order #${order.id} is placed. Total: Rs.${total}. Payment: ${payLabel}. We will deliver soon!`
+        `Hi ${customer.name || 'there'}! Your Jhatpats order #${order.id} is placed. Total: Rs.${total}. Payment: ${payLabel}. Delivery OTP: ${deliveryOtp}. Share it only with your rider.`
       ).catch(() => {});
     }
+
+    // Fan out to riders. Best-effort: if nobody is online the sweeper retries,
+    // and a dispatch failure must never fail an order the customer already paid for.
+    require('../../services/rider-dispatch.service')
+      .offerOrder(order.id)
+      .catch(err => console.error('[dispatch] on placement:', err.message));
 
     return res.status(201).json({ ...order.toJSON(), payment_method });
   } catch (err) {
@@ -134,7 +155,7 @@ const place = async (req, res) => {
 const getById = async (req, res) => {
   try {
     const order = await Order.findOne({
-      where: { id: req.params.id, user_id: req.user.id },
+      where: { id: req.params.id, customerId: req.user.id },
       include: [
         { model: OrderItem, as: 'items', include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'image_url', 'unit'] }] },
         { model: OrderTimeline, as: 'timeline' },

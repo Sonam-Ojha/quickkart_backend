@@ -27,7 +27,8 @@ const upload = multer({
 // POST /api/admin/upload
 router.post('/', authenticate, requireAdmin, upload.single('image'), (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-  const url = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+  const publicHost = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+  const url = `${publicHost}/uploads/${req.file.filename}`;
   return res.json({ url });
 });
 
