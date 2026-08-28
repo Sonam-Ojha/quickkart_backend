@@ -90,4 +90,4 @@ const updateLocation = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-module.exports = { getProfile, updateProfile, changePassword, toggleOnline, updateLocation };
+module.exports = { getProfile, updateProfile, changePassword, toggleOnline: setDuty, updateLocation };

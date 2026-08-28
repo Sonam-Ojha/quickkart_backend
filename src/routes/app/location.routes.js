@@ -113,26 +113,38 @@ async function reverseGeocodeProvider(lat, lng) {
 }
 
 async function searchGeocodeProvider(query) {
-  const raw = await nominatimFetch(
-    `/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=8&countrycodes=in`
-  );
-  if (!Array.isArray(raw)) return [];
+  // Try structured search first (better for "area, city" style queries)
+  const parts = query.split(',').map(s => s.trim()).filter(Boolean);
+  const isMultiPart = parts.length >= 2;
+
+  const buildUrl = (q) =>
+    `/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=8&countrycodes=in&accept-language=en`;
+
+  let raw = await nominatimFetch(buildUrl(query));
+
+  // If no results and query looks like "locality, city", retry with just the city
+  if ((!Array.isArray(raw) || raw.length === 0) && isMultiPart) {
+    const cityQuery = parts.slice(1).join(', ');
+    raw = await nominatimFetch(buildUrl(cityQuery));
+  }
+
+  if (!Array.isArray(raw) || raw.length === 0) return [];
 
   return raw.map((r) => {
     const a = r.address || {};
-    const area = [
-      a.road || a.neighbourhood || a.suburb,
-      a.city || a.town || a.village || a.county,
-      a.state,
-    ].filter(Boolean).join(', ');
+    const localPart = a.suburb || a.neighbourhood || a.quarter || a.road || a.village;
+    const cityPart  = a.city || a.town || a.county;
+
+    const area = [localPart, cityPart, a.state]
+      .filter(Boolean).join(', ');
 
     return {
-      displayName:     r.display_name,
-      area,
-      city:            a.city || a.town || a.village || a.county || '',
-      state:           a.state || '',
-      postalCode:      a.postcode || '',
-      country:         a.country || '',
+      displayName:      r.display_name,
+      area:             area || r.display_name,
+      city:             cityPart || '',
+      state:            a.state || '',
+      postalCode:       a.postcode || '',
+      country:          a.country || '',
       formattedAddress: r.display_name,
       lat: parseFloat(r.lat),
       lng: parseFloat(r.lon),
