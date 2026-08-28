@@ -1,6 +1,7 @@
 const express = require('express');
 const cors    = require('cors');
 const path    = require('path');
+const multer  = require('multer');
 
 // ── Admin Panel Routes (used by react-app admin panel) ────
 const adminAuthRoutes    = require('./src/routes/admin/auth.routes');
@@ -23,11 +24,18 @@ const adminDashboardRoutes  = require('./src/routes/admin/dashboard.routes');
 const adminFaqRoutes        = require('./src/routes/admin/faq.routes');
 const adminSettingsRoutes   = require('./src/routes/admin/settings.routes');
 const adminUploadRoutes     = require('./src/routes/admin/upload.routes');
+const adminRiderOpsRoutes   = require('./src/routes/admin/rider-ops.routes');
 
 // ── Rider App Routes (used by quickkart_rider mobile/web app) ─
-const riderAuthRoutes    = require('./src/routes/rider/auth.routes');
-const riderProfileRoutes = require('./src/routes/rider/profile.routes');
-const riderOrderRoutes   = require('./src/routes/rider/orders.routes');
+const riderAuthRoutes        = require('./src/routes/rider/auth.routes');
+const riderProfileRoutes     = require('./src/routes/rider/profile.routes');
+const riderOrderRoutes       = require('./src/routes/rider/orders.routes');
+const riderEarningsRoutes    = require('./src/routes/rider/earnings.routes');
+const riderPayoutRoutes      = require('./src/routes/rider/payouts.routes');
+const riderPerformanceRoutes = require('./src/routes/rider/performance.routes');
+const riderNotificationRoutes= require('./src/routes/rider/notifications.routes');
+const riderSupportRoutes     = require('./src/routes/rider/support.routes');
+const riderDocumentRoutes    = require('./src/routes/rider/documents.routes');
 
 // ── Customer App Routes (used by quickkart_customer web app) ─
 const appAuthRoutes       = require('./src/routes/app/auth.routes');
@@ -50,11 +58,14 @@ const appOtpRoutes        = require('./src/routes/app/otp.routes');
 
 const app = express();
 
+// localhost / 127.0.0.1 / ::1 / LAN IPs (192.168.x, 10.x, 172.16-31.x) on any port
+const DEV_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/;
+
 const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, curl, Postman)
-    // and any localhost port in development
-    if (!origin || origin.startsWith('http://localhost')) {
+    // and any dev origin on this machine or the LAN (any port)
+    if (!origin || DEV_ORIGIN.test(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -94,6 +105,7 @@ app.use('/api/admin/dashboard',   adminDashboardRoutes);
 app.use('/api/admin/faqs',        adminFaqRoutes);
 app.use('/api/admin/settings',    adminSettingsRoutes);
 app.use('/api/admin/upload',      adminUploadRoutes);
+app.use('/api/admin/rider-ops',   adminRiderOpsRoutes);
 
 // ── Customer App API (/api/app/...) ──────────────────────
 app.use('/api/app/auth',       appAuthRoutes);
@@ -116,8 +128,35 @@ app.use('/api/app/otp',       appOtpRoutes);
 app.use('/api/app/payments',  require('./src/routes/app/payment.routes'));
 
 // ── Rider App API (/api/rider/...) ────────────────────────
-app.use('/api/rider/auth',    riderAuthRoutes);
-app.use('/api/rider/profile', riderProfileRoutes);
-app.use('/api/rider/orders',  riderOrderRoutes);
+app.use('/api/rider/auth',          riderAuthRoutes);
+app.use('/api/rider/profile',       riderProfileRoutes);
+app.use('/api/rider/orders',        riderOrderRoutes);
+app.use('/api/rider/earnings',      riderEarningsRoutes);
+app.use('/api/rider/payouts',       riderPayoutRoutes);
+app.use('/api/rider/performance',   riderPerformanceRoutes);
+app.use('/api/rider/notifications', riderNotificationRoutes);
+app.use('/api/rider/support',       riderSupportRoutes);
+app.use('/api/rider/documents',     riderDocumentRoutes);
+
+// Unmatched /api/* paths fall through to Express's HTML 404, which clients
+// can't parse. Answer in JSON like every other route.
+app.use('/api', (req, res) => {
+  res.status(404).json({ message: `Cannot ${req.method} ${req.baseUrl}${req.path}` });
+});
+
+// ── Error handler ─────────────────────────────────────────
+// Without this, a rejected upload (multer fileFilter / size limit) falls
+// through to Express's default handler, which answers with an HTML stack
+// trace that leaks server paths. Clients here always expect JSON.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, _next) => {
+  if (res.headersSent) return;
+  const isUploadError = err instanceof multer.MulterError || /files? are allowed/i.test(err.message || '');
+  const status = err.status || (isUploadError ? 400 : 500);
+  if (status >= 500) console.error('[UNHANDLED]', err.message);
+  res.status(status).json({
+    message: status >= 500 ? 'Internal server error' : err.message,
+  });
+});
 
 module.exports = app;

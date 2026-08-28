@@ -1,4 +1,10 @@
 require('./src/config/env');
+
+// The DB host resolves to both IPv6 and IPv4, and the IPv4 route is currently
+// blackholed. Node's happy-eyeballs races them 250ms apart by default, which
+// often lets the dead IPv4 attempt win the race and fail with ETIMEDOUT.
+// Give the working IPv6 address time to connect first.
+require('net').setDefaultAutoSelectFamilyAttemptTimeout(2000);
 const app = require('./app');
 const sequelize = require('./src/config/db');
 
@@ -30,12 +36,23 @@ require('./src/models/wishlist.model');         // → products, users
 require('./src/models/cart-item.model');        // → users
 require('./src/models/membership.model');       // → users
 
+// ── Rider app models ─────────────────────────────────────
+require('./src/models/rider-document.model');     // → riders
+require('./src/models/rider-duty-session.model'); // → riders
+require('./src/models/rider-notification.model'); // → riders
+require('./src/models/rider-payout.model');       // → riders
+require('./src/models/rider-order-offer.model');  // → riders, orders
+require('./src/models/rider-earning.model');      // → riders, orders
+require('./src/models/rider-support-message.model'); // → riders
+
 const PORT = process.env.PORT || 4000;
 
 sequelize
   .sync({ alter: { drop: false } })
   .then(() => {
     console.log('Database connected and synced');
+    // Retries orders whose dispatch offers all lapsed (DISPATCH_SWEEP_MS=0 disables).
+    require('./src/services/rider-dispatch.service').startSweeper();
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   })
   .catch((err) => {

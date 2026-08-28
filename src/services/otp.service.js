@@ -66,7 +66,9 @@ async function sendOtpSms(mobile) {
   const apiKey = process.env.FAST2SMS_API_KEY;
   if (!apiKey) {
     console.log(`[SMS DEBUG] FAST2SMS_API_KEY missing → DEV mode, SMS NOT sent`);
-    return { success: true, dev: true };
+    // No SMS is going out, so hand the code back to the caller. Only routes
+    // that explicitly opt in should forward it, and only in this dev branch.
+    return { success: true, dev: true, otp };
   }
 
   const params = new URLSearchParams({

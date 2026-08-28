@@ -18,4 +18,24 @@ const authenticateRider = (req, res, next) => {
   }
 };
 
-module.exports = { authenticateRider };
+// Short-lived token issued after OTP verification when the mobile has no rider
+// yet. It only unlocks the registration endpoint — nothing else accepts it.
+const authenticateSignup = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'No token provided' });
+  }
+  const token = authHeader.split(' ')[1];
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET || 'my-secret-key');
+    if (payload.role !== 'rider_signup') {
+      return res.status(403).json({ message: 'Verify your mobile number first' });
+    }
+    req.signup = payload;
+    next();
+  } catch {
+    return res.status(401).json({ message: 'Invalid or expired token' });
+  }
+};
+
+module.exports = { authenticateRider, authenticateSignup };

@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const { authenticate } = require('../../middlewares/auth.middleware');
+const { requireAdmin }  = require('../../middlewares/admin.middleware');
 const ctrl = require('../../controllers/admin/dashboard.controller');
-router.get('/', authenticate, ctrl.getData);
+router.get('/', authenticate, requireAdmin, ctrl.getData);
 module.exports = router;

@@ -1,10 +1,11 @@
 const express = require('express');
 const router  = express.Router();
 const { authenticate } = require('../../middlewares/auth.middleware');
+const { requireAdmin }  = require('../../middlewares/admin.middleware');
 const ctrl = require('../../controllers/admin/referral.controller');
 
-router.get('/stats',    authenticate, ctrl.stats);
-router.get('/',         authenticate, ctrl.list);
-router.patch('/:id',    authenticate, ctrl.updateStatus);
+router.get('/stats',    authenticate, requireAdmin, ctrl.stats);
+router.get('/',         authenticate, requireAdmin, ctrl.list);
+router.patch('/:id',    authenticate, requireAdmin, ctrl.updateStatus);
 
 module.exports = router;

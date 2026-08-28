@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../../middlewares/auth.middleware');
+const { requireAdmin }  = require('../../middlewares/admin.middleware');
 const { requireSuperAdmin } = require('../../middlewares/admin.middleware');
 const ctrl = require('../../controllers/admin/users.controller');
 
-router.use(authenticate, requireSuperAdmin);
+router.use(authenticate, requireAdmin, requireSuperAdmin);
 
 router.get('/', ctrl.list);
 router.post('/invite', ctrl.invite);
