@@ -51,9 +51,14 @@ sequelize
   .sync({ alter: { drop: false } })
   .then(() => {
     console.log('Database connected and synced');
-    // Retries orders whose dispatch offers all lapsed (DISPATCH_SWEEP_MS=0 disables).
     require('./src/services/rider-dispatch.service').startSweeper();
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`Port ${PORT} already in use. Run: kill $(lsof -ti:${PORT})`);
+        process.exit(1);
+      } else throw err;
+    });
   })
   .catch((err) => {
     console.error('Failed to connect to database:', err.message);
