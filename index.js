@@ -1,4 +1,4 @@
-require('./src/config/env');
+require('dotenv').config();
 
 // The DB host resolves to both IPv6 and IPv4, and the IPv4 route is currently
 // blackholed. Node's happy-eyeballs races them 250ms apart by default, which

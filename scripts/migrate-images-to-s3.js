@@ -9,7 +9,7 @@
  * already points to S3 (amazonaws.com).
  */
 
-require('../src/config/env');
+require('dotenv').config();
 const fs   = require('fs');
 const path = require('path');
 const http = require('http');

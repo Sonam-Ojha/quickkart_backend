@@ -58,8 +58,10 @@ const appOtpRoutes        = require('./src/routes/app/otp.routes');
 
 const app = express();
 
-// localhost / 127.0.0.1 / ::1 / LAN IPs (192.168.x, 10.x, 172.16-31.x) on any port
-const DEV_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/;
+// Any dev origin on this machine or the network it is on, on any port:
+// localhost / 127.x / ::1, RFC1918 LANs (192.168.x, 10.x, 172.16-31.x),
+// 192.0.0.x (iPhone USB/hotspot tethering) and 100.64-127.x (carrier CGNAT).
+const DEV_ORIGIN = /^https?:\/\/(localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[::1\]|192\.168\.\d{1,3}\.\d{1,3}|192\.0\.0\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3})(:\d+)?$/;
 
 const corsOptions = {
   origin: (origin, callback) => {
