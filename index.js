@@ -1,4 +1,5 @@
-require('./src/config/env');
+// Load .env only in local dev; production uses hosting panel env vars
+try { require('dotenv').config(); } catch (_) {}
 
 // The DB host resolves to both IPv6 and IPv4, and the IPv4 route is currently
 // blackholed. Node's happy-eyeballs races them 250ms apart by default, which

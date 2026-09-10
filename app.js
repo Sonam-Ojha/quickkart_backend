@@ -58,14 +58,16 @@ const appOtpRoutes        = require('./src/routes/app/otp.routes');
 
 const app = express();
 
-// localhost / 127.0.0.1 / ::1 / LAN IPs (192.168.x, 10.x, 172.16-31.x) on any port
 const DEV_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/;
+const PROD_ORIGINS = new Set([
+  'https://jhatpats.com',
+  'https://www.jhatpats.com',
+  'https://admin.jhatpats.com',
+]);
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, Postman)
-    // and any dev origin on this machine or the LAN (any port)
-    if (!origin || DEV_ORIGIN.test(origin)) {
+    if (!origin || DEV_ORIGIN.test(origin) || PROD_ORIGINS.has(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
