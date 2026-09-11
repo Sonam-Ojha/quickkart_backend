@@ -37,8 +37,12 @@ router.post('/', authenticate, requireAdmin, (req, res, next) => {
     const { url, key } = await s3.uploadImage(req.file.buffer, scope);
     return res.json({ url, key });
   } catch (err) {
-    console.error('[upload] S3 upload failed:', err.message);
-    return res.status(502).json({ message: 'Image upload failed. Please try again.' });
+    console.error('[upload] image upload failed:', err);
+    return res.status(502).json({
+      message: process.env.NODE_ENV === 'production'
+        ? 'Image upload failed. Please try again.'
+        : `Image upload failed: ${err.message}`,
+    });
   }
 });
 

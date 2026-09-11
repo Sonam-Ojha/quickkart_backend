@@ -13,6 +13,7 @@ const Banner = sequelize.define('Banner', {
       'orange-tint', 'teal-tint', 'blue-tint',
       'emerald-tint', 'rose-tint', 'purple-tint'
     ),
+    allowNull: true,          // null = no colour theme, image shown on its own
     defaultValue: 'orange-tint',
     field: 'bg_type',
   },
