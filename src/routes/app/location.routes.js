@@ -93,21 +93,31 @@ async function reverseGeocodeProvider(lat, lng) {
 
   const a = raw.address || {};
 
-  const locality = a.suburb || a.neighbourhood || a.quarter ||
-                   a.road || a.village || a.town || a.city || 'Current Location';
+  // Indian addresses: "Sector 21 / DLF Phase 3" usually arrive as `residential`;
+  // colony / zone names as `city_district`, `suburb` or `hamlet`.
+  const micro = a.residential || a.neighbourhood || a.quarter || a.allotments || '';
+  const sub   = a.suburb || a.city_district || a.hamlet || a.borough || '';
+  const road  = a.road || a.pedestrian || a.footway || a.cycleway || '';
+  const house = a.house_number || '';
+  const city  = a.city || a.town || a.municipality || a.village ||
+                a.county || a.state_district || '';
+
+  const locality = micro || sub || road || city || 'Current Location';
 
   const area = [
-    a.suburb || a.neighbourhood || a.road || a.quarter,
-    a.city   || a.town || a.village || a.county,
+    [house, road].filter(Boolean).join(' '),
+    micro,
+    sub && sub !== micro ? sub : '',
+    city,
   ].filter(Boolean).join(', ');
 
   return {
     locality,
-    area,
-    city:            a.city || a.town || a.village || a.county || '',
-    state:           a.state || '',
-    postalCode:      a.postcode || '',
-    country:         a.country || '',
+    area:             area || raw.display_name || '',
+    city,
+    state:            a.state || '',
+    postalCode:       a.postcode || '',
+    country:          a.country || '',
     formattedAddress: raw.display_name || '',
   };
 }

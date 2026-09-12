@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
       section:  b.section,
       emoji:    b.emoji ?? '',
       bgType:   b.bgType,
-      bgColor:  BG_HEX[b.bgType] ?? '#C2410C',
+      bgColor:  b.bgType ? (BG_HEX[b.bgType] ?? '#C2410C') : null,
       ctaLink:  b.deeplink ?? null,
     }));
 

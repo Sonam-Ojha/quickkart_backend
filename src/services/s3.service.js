@@ -1,20 +1,39 @@
 const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const sharp  = require('sharp');
 const crypto = require('crypto');
-
-// ── S3 client ─────────────────────────────────────────────────────────────────
-const s3 = new S3Client({
-  region: process.env.AWS_REGION || 'ap-south-1',
-  credentials: {
-    accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  },
-});
+const fs     = require('fs/promises');
+const path   = require('path');
 
 const BUCKET      = process.env.AWS_S3_BUCKET_NAME;
 const REGION      = process.env.AWS_REGION || 'ap-south-1';
 const MAX_SIDE    = 900;   // resize larger images down
 const WEBP_QUALITY = 82;   // good quality, reasonable size
+
+// ── Storage backend ───────────────────────────────────────────────────────────
+// Use S3 only when credentials + bucket are all present. Otherwise fall back to
+// local disk (public/uploads, served at /uploads) so uploads work out of the box.
+const S3_ENABLED = !!(
+  process.env.AWS_ACCESS_KEY_ID &&
+  process.env.AWS_SECRET_ACCESS_KEY &&
+  BUCKET
+);
+
+const LOCAL_DIR  = path.join(__dirname, '../../public/uploads');
+const LOCAL_BASE = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 4000}`;
+
+const s3 = S3_ENABLED
+  ? new S3Client({
+      region: REGION,
+      credentials: {
+        accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      },
+    })
+  : null;
+
+if (!S3_ENABLED) {
+  console.warn('[s3] AWS S3 not configured — image uploads will be saved to local disk (public/uploads).');
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -26,8 +45,10 @@ function s3Url(key) {
 // "https://bucket.s3.region.amazonaws.com/products/123/uuid.webp" → "products/123/uuid.webp"
 function keyFromUrl(url) {
   if (!url) return null;
-  const match = url.match(/amazonaws\.com\/(.+)$/);
-  return match ? match[1] : null;
+  const s3Match = url.match(/amazonaws\.com\/(.+)$/);
+  if (s3Match) return s3Match[1];
+  const localMatch = url.match(/\/uploads\/(.+)$/);   // local-disk URLs
+  return localMatch ? localMatch[1] : null;
 }
 
 // ── Core upload ───────────────────────────────────────────────────────────────
@@ -47,6 +68,13 @@ async function uploadImage(buffer, scope = 'general') {
 
   const key = `products/${scope}/${crypto.randomUUID()}.webp`;
 
+  if (!S3_ENABLED) {
+    const dest = path.join(LOCAL_DIR, key);
+    await fs.mkdir(path.dirname(dest), { recursive: true });
+    await fs.writeFile(dest, optimised);
+    return { key, url: `${LOCAL_BASE}/uploads/${key}` };
+  }
+
   await s3.send(new PutObjectCommand({
     Bucket:      BUCKET,
     Key:         key,
@@ -64,6 +92,10 @@ async function uploadImage(buffer, scope = 'general') {
  */
 async function deleteImage(key) {
   if (!key) return;
+  if (!S3_ENABLED) {
+    await fs.rm(path.join(LOCAL_DIR, key), { force: true });
+    return;
+  }
   await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
 }
 
