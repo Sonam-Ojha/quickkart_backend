@@ -3,7 +3,7 @@ const sequelize = require('../config/db');
 
 const Banner = sequelize.define('Banner', {
   id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  title:       { type: DataTypes.STRING(120), allowNull: false },
+  title:       { type: DataTypes.STRING(120), allowNull: true },
   subtitle:    { type: DataTypes.STRING(255), allowNull: true },
   bannerImage: { type: DataTypes.STRING(500), allowNull: false, field: 'banner_image' },
   section:     { type: DataTypes.ENUM('hero', 'promo'), defaultValue: 'hero' },

@@ -132,6 +132,7 @@ app.use('/api/app/location',  appLocationRoutes);
 app.use('/api/app/otp',            appOtpRoutes);
 app.use('/api/app/service-status', require('./src/routes/app/service-status.routes'));
 app.use('/api/app/payments',  require('./src/routes/app/payment.routes'));
+app.use('/api/app/print',     require('./src/routes/app/print.routes'));
 
 // ── Rider App API (/api/rider/...) ────────────────────────
 app.use('/api/rider/auth',          riderAuthRoutes);

@@ -125,4 +125,37 @@ async function replaceImage(newBuffer, oldUrl, scope = 'general') {
   return result;
 }
 
-module.exports = { uploadImage, deleteImage, deleteImageByUrl, replaceImage, keyFromUrl, s3Url };
+// ── Raw file upload (for non-image files like PDFs) ──────────────────────────
+
+const FILE_MIME = {
+  '.pdf':  'application/pdf',
+  '.doc':  'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.jpg':  'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png':  'image/png',
+};
+
+async function uploadFile(buffer, originalName, scope = 'prints') {
+  const ext         = path.extname(originalName).toLowerCase() || '.bin';
+  const key         = `${scope}/${crypto.randomUUID()}${ext}`;
+  const contentType = FILE_MIME[ext] || 'application/octet-stream';
+
+  if (!S3_ENABLED) {
+    const dest = path.join(LOCAL_DIR, key);
+    await fs.mkdir(path.dirname(dest), { recursive: true });
+    await fs.writeFile(dest, buffer);
+    return { key, url: `${LOCAL_BASE}/uploads/${key}` };
+  }
+
+  await s3.send(new PutObjectCommand({
+    Bucket:      BUCKET,
+    Key:         key,
+    Body:        buffer,
+    ContentType: contentType,
+  }));
+
+  return { key, url: s3Url(key) };
+}
+
+module.exports = { uploadImage, uploadFile, deleteImage, deleteImageByUrl, replaceImage, keyFromUrl, s3Url };

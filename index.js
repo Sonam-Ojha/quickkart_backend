@@ -46,6 +46,7 @@ require('./src/models/rider-payout.model');       // → riders
 require('./src/models/rider-order-offer.model');  // → riders, orders
 require('./src/models/rider-earning.model');      // → riders, orders
 require('./src/models/rider-support-message.model'); // → riders
+require('./src/models/print-order.model');           // → users
 
 const PORT = process.env.PORT || 4000;
 
@@ -59,10 +60,19 @@ function startServer() {
   });
 }
 
-sequelize
-  .sync({ alter: { drop: false } })
+// In production: just verify the connection (1 query, 1 connection).
+// In dev: sync with alter so schema changes apply automatically.
+// sync({ alter }) opens 50-100+ connections across all tables — this was
+// exhausting Hostinger's 500-connections/hour limit on every restart.
+const isProd = process.env.NODE_ENV === 'production';
+
+const dbInit = isProd
+  ? sequelize.authenticate()
+  : sequelize.sync({ alter: { drop: false } });
+
+dbInit
   .then(() => {
-    console.log('Database connected and synced');
+    console.log(isProd ? 'Database connected' : 'Database connected and synced');
     require('./src/services/rider-dispatch.service').startSweeper();
     startServer();
   })
