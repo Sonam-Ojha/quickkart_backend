@@ -35,6 +35,7 @@ require('./src/models/support-ticket.model');   // → users, orders
 require('./src/models/support-message.model');  // → support_tickets
 require('./src/models/wishlist.model');         // → products, users
 require('./src/models/cart-item.model');        // → users
+require('./src/models/info-page.model');
 require('./src/models/membership.model');       // → users
 
 // ── Rider app models ─────────────────────────────────────
@@ -48,20 +49,25 @@ require('./src/models/rider-support-message.model'); // → riders
 
 const PORT = process.env.PORT || 4000;
 
+function startServer() {
+  const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} already in use. Run: kill $(lsof -ti:${PORT})`);
+      process.exit(1);
+    } else throw err;
+  });
+}
+
 sequelize
   .sync({ alter: { drop: false } })
   .then(() => {
     console.log('Database connected and synced');
     require('./src/services/rider-dispatch.service').startSweeper();
-    const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-    server.on('error', (err) => {
-      if (err.code === 'EADDRINUSE') {
-        console.error(`Port ${PORT} already in use. Run: kill $(lsof -ti:${PORT})`);
-        process.exit(1);
-      } else throw err;
-    });
+    startServer();
   })
   .catch((err) => {
-    console.error('Failed to connect to database:', err.message);
-    process.exit(1);
+    console.error('⚠️  DB connection failed:', err.message);
+    console.error('Starting server WITHOUT DB — only OTP/in-memory routes will work');
+    startServer();
   });

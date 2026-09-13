@@ -12,7 +12,7 @@ router.post('/send', async (req, res) => {
       console.log(`[OTP ROUTE] Sending OTP via EMAIL to ${email}`);
       const result = await otpService.sendOtpEmail(email);
       console.log(`[OTP ROUTE] Email result:`, result);
-      return res.json({ success: true, channel: 'email', dev: result.dev || false });
+      return res.json({ success: true, channel: 'email', dev: result.dev || false, ...(result.otp ? { devOtp: result.otp } : {}) });
     }
 
     if (mobile) {
@@ -23,7 +23,7 @@ router.post('/send', async (req, res) => {
       console.log(`[OTP ROUTE] Sending OTP via SMS to ${mobile}`);
       const result = await otpService.sendOtpSms(mobile);
       console.log(`[OTP ROUTE] SMS result:`, result);
-      return res.json({ success: true, channel: 'sms', dev: result.dev || false });
+      return res.json({ success: true, channel: 'sms', dev: result.dev || false, ...(result.otp ? { devOtp: result.otp } : {}) });
     }
 
     console.log(`[OTP ROUTE] ❌ No email or mobile in body`);

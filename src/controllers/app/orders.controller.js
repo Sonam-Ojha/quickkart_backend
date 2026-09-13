@@ -6,6 +6,7 @@ const Product       = require('../../models/product.model');
 const DarkStore     = require('../../models/darkstore.model');
 const Inventory     = require('../../models/inventory.model');
 const Rider         = require('../../models/rider.model');
+const Address       = require('../../models/address.model');
 const User          = require('../../models/user.model');
 const sequelize     = require('../../../src/config/db');
 const { sendSms }   = require('../../services/otp.service');
@@ -160,6 +161,7 @@ const getById = async (req, res) => {
         { model: OrderItem, as: 'items', include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'image_url', 'unit'] }] },
         { model: OrderTimeline, as: 'timeline' },
         { model: Rider, as: 'rider', attributes: ['id', 'name', 'mobile', 'vehicleType', 'vehicleNumber', 'rating', 'currentLat', 'currentLng', 'locationUpdatedAt'], required: false },
+        { model: Address, as: 'address', attributes: ['id', 'label', 'line1', 'line2', 'city', 'pincode', 'lat', 'lng'], required: false },
       ],
     });
     if (!order) return res.status(404).json({ message: 'Order not found' });
@@ -171,13 +173,34 @@ const getById = async (req, res) => {
 
 const cancel = async (req, res) => {
   try {
-    const order = await Order.findOne({ where: { id: req.params.id, user_id: req.user.id } });
+    const order = await Order.findOne({
+      where: { id: req.params.id, customerId: req.user.id },
+      include: [{ model: OrderItem, as: 'items' }],
+    });
     if (!order) return res.status(404).json({ message: 'Order not found' });
-    if (!['pending', 'confirmed'].includes(order.status)) {
-      return res.status(400).json({ message: 'Order cannot be cancelled at this stage' });
+
+    const CANCELLABLE = ['pending', 'confirmed', 'preparing'];
+    if (!CANCELLABLE.includes(order.status)) {
+      return res.status(400).json({
+        message: order.status === 'out_for_delivery'
+          ? 'Cannot cancel — rider is already on the way'
+          : 'Order cannot be cancelled at this stage',
+      });
     }
+
+    const { reason = 'Cancelled by customer' } = req.body;
+
     await order.update({ status: 'cancelled' });
-    await OrderTimeline.create({ orderId: order.id, status: 'cancelled', note: req.body.reason || 'Cancelled by customer' });
+    await OrderTimeline.create({ orderId: order.id, status: 'cancelled', note: reason });
+
+    // Restore inventory
+    for (const item of (order.items ?? [])) {
+      await Inventory.increment('stockQty', {
+        by: item.quantity,
+        where: { productId: item.productId, ...(order.storeId ? { storeId: order.storeId } : {}) },
+      }).catch(() => {});
+    }
+
     return res.json({ message: 'Order cancelled successfully' });
   } catch (err) {
     return res.status(500).json({ message: err.message });

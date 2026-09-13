@@ -10,6 +10,13 @@ const sequelize = new Sequelize(
     dialect: 'mysql',
     logging: false,
     dialectOptions: { connectTimeout: 30000, ssl: false },
+    pool: {
+      max: 2,          // max 2 connections total — stay well under Hostinger's limit
+      min: 1,          // keep 1 alive so requests don't reconnect every time
+      acquire: 30000,  // wait up to 30s for a free connection
+      idle: 600000,    // keep idle connection alive for 10 min before closing
+      evict: 60000,    // check for stale connections every 60s
+    },
   }
 );
 

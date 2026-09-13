@@ -97,10 +97,17 @@ async function sendOtpSms(mobile) {
         console.log(`[SMS DEBUG] Fast2SMS status=${res.statusCode} response=${data}`);
         try {
           const json = JSON.parse(data);
-          if (json.return === true) resolve({ success: true });
-          else reject(new Error(json.message?.[0] || 'Fast2SMS error'));
+          if (json.return === true) {
+            resolve({ success: true });
+          } else {
+            // SMS failed (e.g. wallet empty) — fall back to dev mode so OTP shows on screen
+            const reason = Array.isArray(json.message) ? json.message[0] : (json.message || 'Fast2SMS error');
+            console.log(`[SMS DEBUG] Fast2SMS failed: ${reason} — returning devOtp`);
+            resolve({ success: true, dev: true, otp });
+          }
         } catch {
-          reject(new Error('Invalid Fast2SMS response'));
+          console.log('[SMS DEBUG] Invalid Fast2SMS response — returning devOtp');
+          resolve({ success: true, dev: true, otp });
         }
       });
     });
