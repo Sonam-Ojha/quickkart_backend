@@ -1,5 +1,6 @@
 const Rider         = require('../../models/rider.model');
 const RiderDocument = require('../../models/rider-document.model');
+const s3            = require('../../services/s3.service');
 
 // Which roll-up column on `riders` each document type feeds. rc and photo have
 // no roll-up — they're stored but don't gate verification.
@@ -40,8 +41,8 @@ const upload = async (req, res) => {
     }
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
-    const host    = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
-    const fileUrl = `${host}/uploads/${req.file.filename}`;
+    // Upload to S3 (falls back to local disk if S3 not configured)
+    const { url: fileUrl } = await s3.uploadFile(req.file.buffer, req.file.originalname, 'kyc');
 
     // One row per (rider, docType): re-uploading replaces and resets review.
     const existing = await RiderDocument.findOne({ where: { riderId: req.rider.id, docType } });

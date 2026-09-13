@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize     = require('../config/db');
+const User          = require('./user.model');
 
 const PrintOrder = sequelize.define('PrintOrder', {
   id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -19,5 +20,7 @@ const PrintOrder = sequelize.define('PrintOrder', {
   tableName:   'print_orders',
   underscored: true,
 });
+
+PrintOrder.belongsTo(User, { foreignKey: 'customer_id', as: 'customer' });
 
 module.exports = PrintOrder;

@@ -110,6 +110,7 @@ app.use('/api/admin/info-pages',  adminInfoPageRoutes);
 app.use('/api/admin/settings',    adminSettingsRoutes);
 app.use('/api/admin/upload',      adminUploadRoutes);
 app.use('/api/admin/rider-ops',   adminRiderOpsRoutes);
+app.use('/api/admin/print-orders', require('./src/routes/admin/print-orders.routes'));
 
 // ── Customer App API (/api/app/...) ──────────────────────
 app.use('/api/app/auth',       appAuthRoutes);
