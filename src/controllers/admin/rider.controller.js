@@ -39,8 +39,16 @@ const toggle = async (req, res) => {
 const remove = async (req, res) => {
   try {
     await svc.remove(req.params.id);
-    res.json({ message: 'Rider deleted' });
-  } catch (err) { res.status(400).json({ message: err.message }); }
+    res.json({ message: 'Rider deleted successfully' });
+  } catch (err) {
+    // ER_ROW_IS_REFERENCED_2 = MySQL FK violation (code 1451)
+    if (err.original?.code === 'ER_ROW_IS_REFERENCED_2' || err.parent?.errno === 1451) {
+      return res.status(409).json({
+        message: 'Cannot delete this rider — they have orders or records linked to their account. Deactivate them instead.',
+      });
+    }
+    res.status(400).json({ message: err.message });
+  }
 };
 
 const setPassword = async (req, res) => {

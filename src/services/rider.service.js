@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const Rider     = require('../models/rider.model');
 const DarkStore = require('../models/darkstore.model');
+const Order     = require('../models/order.model');
 
 const getAll = async ({ storeId, status, search } = {}) => {
   const where = {};
@@ -45,6 +46,17 @@ const toggle = async (id) => {
 const remove = async (id) => {
   const rider = await Rider.findByPk(id);
   if (!rider) throw new Error('Rider not found');
+
+  // Block hard delete if the rider has any orders — the FK constraint would
+  // reject it anyway, but we give a clear message before hitting the DB.
+  const orderCount = await Order.count({ where: { riderId: id } });
+  if (orderCount > 0) {
+    throw new Error(
+      `Cannot delete ${rider.name} — they have ${orderCount} order${orderCount === 1 ? '' : 's'} linked to their account. ` +
+      `Deactivate the rider instead, or reassign the orders first.`
+    );
+  }
+
   await rider.destroy();
 };
 
