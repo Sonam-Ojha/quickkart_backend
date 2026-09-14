@@ -44,6 +44,18 @@ const sendToRider = async (riderId, payload) => {
   if (res?.stale) await Rider.update({ fcm_token: null }, { where: { id: riderId } });
 };
 
+// Send to many rider ids
+const sendToManyRiders = async (riderIds, payload) => {
+  const riders = await Rider.findAll({
+    where: { id: riderIds },
+    attributes: ['id', 'fcm_token'],
+  });
+  const sends = riders
+    .filter(r => r.fcm_token)
+    .map(r => sendToToken(r.fcm_token, payload));
+  return Promise.allSettled(sends);
+};
+
 // Send to many user ids (e.g. broadcast)
 const sendToUsers = async (userIds, payload) => {
   const users = await User.findAll({
@@ -92,6 +104,7 @@ module.exports = {
   sendToToken,
   sendToUser,
   sendToRider,
+  sendToManyRiders,
   sendToUsers,
   notifyOrderStatus,
   notifyRiderNewOrder,

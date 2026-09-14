@@ -5,6 +5,7 @@ const RiderPayout         = require('../../models/rider-payout.model');
 const RiderNotification   = require('../../models/rider-notification.model');
 const RiderSupportMessage = require('../../models/rider-support-message.model');
 const earningsSvc         = require('../../services/rider-earnings.service');
+const { sendToRider, sendToManyRiders } = require('../../services/notification.service');
 
 const send = (res, err) => res.status(err.status || 500).json({ message: err.message });
 const RIDER_ATTRS = ['id', 'name', 'mobile'];
@@ -59,14 +60,12 @@ const updatePayout = async (req, res) => {
       processedAt:   new Date(),
     });
 
-    await RiderNotification.create({
-      riderId: payout.riderId,
-      type: 'payout',
-      title: state === 'paid' ? `Rs.${payout.amount} paid out` : `Withdrawal of Rs.${payout.amount} failed`,
-      body:  state === 'paid'
-        ? `Sent to ${payout.destination}.${reference ? ` Ref: ${reference}` : ''}`
-        : `${failureReason}. The amount is back in your balance.`,
-    });
+    const payoutTitle = state === 'paid' ? `Rs.${payout.amount} paid out` : `Withdrawal of Rs.${payout.amount} failed`;
+    const payoutBody  = state === 'paid'
+      ? `Sent to ${payout.destination}.${reference ? ` Ref: ${reference}` : ''}`
+      : `${failureReason}. The amount is back in your balance.`;
+    await RiderNotification.create({ riderId: payout.riderId, type: 'payout', title: payoutTitle, body: payoutBody });
+    sendToRider(payout.riderId, { title: payoutTitle, body: payoutBody, data: { type: 'payout', screen: 'Earnings' } }).catch(() => {});
 
     // A failed payout is excluded from paidOut, so the balance recovers on its own.
     res.json({ message: `Payout ${state}`, payout, ...(await earningsSvc.balanceOf(payout.riderId)) });
@@ -111,10 +110,8 @@ const supportReply = async (req, res) => {
     if (text.length > 2000) return res.status(400).json({ message: 'message must be under 2000 characters' });
 
     const message = await RiderSupportMessage.create({ riderId: rider.id, sender: 'agent', message: text });
-    await RiderNotification.create({
-      riderId: rider.id, type: 'announcement',
-      title: 'Support replied', body: text.slice(0, 160),
-    });
+    await RiderNotification.create({ riderId: rider.id, type: 'announcement', title: 'Support replied', body: text.slice(0, 160) });
+    sendToRider(rider.id, { title: '💬 Support replied', body: text.slice(0, 160), data: { type: 'support', screen: 'Support' } }).catch(() => {});
     res.status(201).json({ message });
   } catch (err) { send(res, err); }
 };
@@ -137,12 +134,11 @@ const addEarning = async (req, res) => {
       if (balance + amt < 0) return res.status(400).json({ message: `Adjustment would push the balance negative (balance Rs.${balance})` });
     }
 
-    const entry = await earningsSvc.creditEarning(rider.id, { type, amount: amt, note: note || null });
-    await RiderNotification.create({
-      riderId: rider.id, type: 'payout',
-      title: amt > 0 ? `Rs.${amt} added` : `Rs.${Math.abs(amt)} deducted`,
-      body:  note || (amt > 0 ? 'A bonus has been credited to your earnings.' : 'An adjustment was applied to your earnings.'),
-    });
+    const entry       = await earningsSvc.creditEarning(rider.id, { type, amount: amt, note: note || null });
+    const earnTitle   = amt > 0 ? `Rs.${amt} added 💰` : `Rs.${Math.abs(amt)} deducted`;
+    const earnBody    = note || (amt > 0 ? 'A bonus has been credited to your earnings.' : 'An adjustment was applied to your earnings.');
+    await RiderNotification.create({ riderId: rider.id, type: 'payout', title: earnTitle, body: earnBody });
+    sendToRider(rider.id, { title: earnTitle, body: earnBody, data: { type: 'payout', screen: 'Earnings' } }).catch(() => {});
     res.status(201).json({ message: 'Earning recorded', entry, ...(await earningsSvc.balanceOf(rider.id)) });
   } catch (err) { send(res, err); }
 };
@@ -163,6 +159,7 @@ const notify = async (req, res) => {
     if (!targets.length) return res.status(404).json({ message: 'No matching riders' });
 
     await RiderNotification.bulkCreate(targets.map(r => ({ riderId: r.id, type, title, body })));
+    sendToManyRiders(targets.map(r => r.id), { title, body, data: { type, screen: 'Notifications' } }).catch(() => {});
     res.status(201).json({ message: 'Notification sent', sent: targets.length });
   } catch (err) { send(res, err); }
 };

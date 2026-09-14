@@ -3,6 +3,7 @@ const svc    = require('../../services/rider.service');
 const Rider  = require('../../models/rider.model');
 const RiderDocument = require('../../models/rider-document.model');
 const { KYC_FIELD } = require('../rider/documents.controller');
+const { sendToRider } = require('../../services/notification.service');
 
 const list = async (req, res) => {
   try {
@@ -96,6 +97,24 @@ const reviewDocument = async (req, res) => {
     if (allVerified && rider.status === 'pending_verification') {
       await rider.update({ status: 'active' });
       activated = true;
+    }
+
+    // FCM to rider for KYC result
+    if (status === 'verified') {
+      const label = doc.docType.replace('_', ' ');
+      sendToRider(rider.id, {
+        title: activated ? '🎉 Account Activated!' : `✅ Document Verified`,
+        body:  activated
+          ? 'All documents verified. You can now go online and start delivering!'
+          : `Your ${label} has been verified.`,
+        data:  { type: 'kyc', screen: 'Documents' },
+      }).catch(() => {});
+    } else if (status === 'rejected') {
+      sendToRider(rider.id, {
+        title: '❌ Document Rejected',
+        body:  `Your ${doc.docType.replace('_', ' ')} was rejected. ${rejectionReason || 'Please re-upload.'}`,
+        data:  { type: 'kyc', screen: 'Documents' },
+      }).catch(() => {});
     }
 
     res.json({ message: `Document ${status}`, document: doc, riderStatus: rider.status, activated });

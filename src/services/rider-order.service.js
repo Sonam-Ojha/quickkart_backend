@@ -11,6 +11,7 @@ const Rider             = require('../models/rider.model');
 const RiderNotification = require('../models/rider-notification.model');
 const RiderOrderOffer   = require('../models/rider-order-offer.model');
 const earningsSvc       = require('./rider-earnings.service');
+const { sendToRider }   = require('./notification.service');
 
 // The rider-side stage machine. `from` is the only stage each action may run
 // in, so a replayed or out-of-order request is rejected instead of skipping a
@@ -141,6 +142,11 @@ const deliver = async (riderId, orderId, { otp, codCollected = false }) => {
       title: `Rs.${amount} added`,
       body:  `Payout for order #${orderId} has been credited to your earnings.`,
     }, { transaction: t });
+    sendToRider(riderId, {
+      title: `Rs.${amount} credited 💰`,
+      body:  `Payout for order #${orderId} added to your earnings.`,
+      data:  { type: 'payout', screen: 'Earnings' },
+    }).catch(() => {});
   });
 
   return { orderId: order.id, amount, fee, incentive, tip, codCollected: isCod ? true : order.codCollected };
