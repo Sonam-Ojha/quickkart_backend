@@ -45,6 +45,7 @@ const Rider = sequelize.define('Rider', {
   acceptedCount:    { type: DataTypes.INTEGER, defaultValue: 0, field: 'accepted_count' },
   rejectedCount:    { type: DataTypes.INTEGER, defaultValue: 0, field: 'rejected_count' },
   cancelledCount:   { type: DataTypes.INTEGER, defaultValue: 0, field: 'cancelled_count' },
+  fcmToken:         { type: DataTypes.STRING(500), allowNull: true, field: 'fcm_token' },
 }, {
   tableName: 'riders',
   timestamps: true,

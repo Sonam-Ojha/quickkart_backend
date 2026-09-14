@@ -17,6 +17,7 @@ const User = sequelize.define('User', {
   walletBalance: { type: DataTypes.INTEGER, defaultValue: 0, field: 'wallet_balance' },
   referralCode:  { type: DataTypes.STRING(20), allowNull: true, unique: true, field: 'referral_code' },
   isActive:      { type: DataTypes.BOOLEAN, defaultValue: true, field: 'is_active' },
+  fcmToken:      { type: DataTypes.STRING(500), allowNull: true, field: 'fcm_token' },
 }, {
   tableName: 'users',
   timestamps: true,

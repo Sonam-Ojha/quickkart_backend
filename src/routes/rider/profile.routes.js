@@ -9,5 +9,6 @@ router.patch('/password',       authenticateRider, ctrl.changePassword);
 router.patch('/toggle-online',  authenticateRider, ctrl.toggleOnline);
 router.patch('/duty',           authenticateRider, ctrl.toggleOnline);
 router.patch('/location',       authenticateRider, ctrl.updateLocation);
+router.post('/fcm-token',       authenticateRider, ctrl.saveFcmToken);
 
 module.exports = router;

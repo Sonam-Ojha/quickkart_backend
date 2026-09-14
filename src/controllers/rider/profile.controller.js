@@ -90,4 +90,13 @@ const updateLocation = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-module.exports = { getProfile, updateProfile, changePassword, toggleOnline: setDuty, updateLocation };
+const saveFcmToken = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ message: 'token is required' });
+    await Rider.update({ fcm_token: token }, { where: { id: req.rider.id } });
+    return res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+module.exports = { getProfile, updateProfile, changePassword, toggleOnline: setDuty, updateLocation, saveFcmToken };

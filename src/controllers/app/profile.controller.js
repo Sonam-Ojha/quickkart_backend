@@ -36,4 +36,15 @@ const update = async (req, res) => {
   }
 };
 
-module.exports = { get, update };
+const saveFcmToken = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ message: 'token is required' });
+    await User.update({ fcm_token: token }, { where: { id: req.user.id } });
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { get, update, saveFcmToken };

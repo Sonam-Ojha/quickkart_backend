@@ -1,5 +1,6 @@
 const { Op }          = require('sequelize');
 const sequelize       = require('../config/db');
+const { notifyRiderNewOrder } = require('./notification.service');
 const Order           = require('../models/order.model');
 const OrderItem       = require('../models/order-item.model');
 const OrderTimeline   = require('../models/order-timeline.model');
@@ -81,6 +82,9 @@ const offerOrder = async (orderId) => {
   );
   await Rider.increment('offeredCount', { where: { id: eligible.map(r => r.id) } });
   await order.update({ riderStage: 'offered', assignedAt: new Date(), ...computePayout(order) });
+
+  // Notify each eligible rider
+  eligible.forEach(r => notifyRiderNewOrder(r.id, order).catch(() => {}));
 
   return { offered: eligible.length, expiresAt };
 };

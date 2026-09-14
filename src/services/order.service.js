@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const { notifyOrderStatus } = require('./notification.service');
 const Order         = require('../models/order.model');
 const OrderItem     = require('../models/order-item.model');
 const OrderTimeline = require('../models/order-timeline.model');
@@ -81,6 +82,8 @@ const updateStatus = async (id, status, note) => {
 
   await order.update({ status });
   await OrderTimeline.create({ orderId: id, status, note: note || null });
+  // Fire-and-forget push notification to customer
+  notifyOrderStatus(order, status).catch(() => {});
   return order;
 };
 
