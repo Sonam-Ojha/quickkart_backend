@@ -11,6 +11,9 @@ const sequelize = require('./src/config/db');
 
 // ── Core models (no FK deps) ─────────────────────────────
 require('./src/models/user.model');
+require('./src/models/country.model');
+require('./src/models/state.model');
+require('./src/models/city.model');
 require('./src/models/darkstore.model');
 require('./src/models/category.model');
 require('./src/models/coupon.model');

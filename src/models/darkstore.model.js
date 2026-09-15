@@ -8,6 +8,7 @@ const DarkStore = sequelize.define('DarkStore', {
   city:      { type: DataTypes.STRING(80), allowNull: false },
   lat:       { type: DataTypes.DECIMAL(9, 6), allowNull: true },
   lng:       { type: DataTypes.DECIMAL(9, 6), allowNull: true },
+  cityId:    { type: DataTypes.INTEGER, allowNull: true, field: 'city_id', references: { model: 'cities', key: 'id' } },
   isActive:  { type: DataTypes.BOOLEAN, defaultValue: true, field: 'is_active' },
 }, {
   tableName: 'dark_stores',
@@ -15,5 +16,9 @@ const DarkStore = sequelize.define('DarkStore', {
   createdAt: 'created_at',
   updatedAt: 'updated_at',
 });
+
+const City = require('./city.model');
+DarkStore.belongsTo(City, { foreignKey: 'cityId', as: 'cityMaster' });
+City.hasMany(DarkStore,   { foreignKey: 'cityId', as: 'stores' });
 
 module.exports = DarkStore;

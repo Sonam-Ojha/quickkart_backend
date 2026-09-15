@@ -26,6 +26,7 @@ const adminInfoPageRoutes   = require('./src/routes/admin/info-page.routes');
 const adminSettingsRoutes   = require('./src/routes/admin/settings.routes');
 const adminUploadRoutes     = require('./src/routes/admin/upload.routes');
 const adminRiderOpsRoutes   = require('./src/routes/admin/rider-ops.routes');
+const adminGeoRoutes        = require('./src/routes/admin/geo.routes');
 
 // ── Rider App Routes (used by quickkart_rider mobile/web app) ─
 const riderAuthRoutes        = require('./src/routes/rider/auth.routes');
@@ -110,6 +111,7 @@ app.use('/api/admin/info-pages',  adminInfoPageRoutes);
 app.use('/api/admin/settings',    adminSettingsRoutes);
 app.use('/api/admin/upload',      adminUploadRoutes);
 app.use('/api/admin/rider-ops',   adminRiderOpsRoutes);
+app.use('/api/admin/geo',         adminGeoRoutes);
 app.use('/api/admin/print-orders', require('./src/routes/admin/print-orders.routes'));
 
 // ── Customer App API (/api/app/...) ──────────────────────
