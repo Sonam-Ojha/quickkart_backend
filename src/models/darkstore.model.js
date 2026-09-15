@@ -9,6 +9,7 @@ const DarkStore = sequelize.define('DarkStore', {
   lat:       { type: DataTypes.DECIMAL(9, 6), allowNull: true },
   lng:       { type: DataTypes.DECIMAL(9, 6), allowNull: true },
   cityId:    { type: DataTypes.INTEGER, allowNull: true, field: 'city_id', references: { model: 'cities', key: 'id' } },
+  radius:    { type: DataTypes.DECIMAL(6, 2), defaultValue: 5.00, allowNull: false }, // km
   isActive:  { type: DataTypes.BOOLEAN, defaultValue: true, field: 'is_active' },
 }, {
   tableName: 'dark_stores',

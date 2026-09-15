@@ -1,20 +1,15 @@
-const Product   = require('../../models/product.model');
-const Category  = require('../../models/category.model');
-const Inventory = require('../../models/inventory.model');
-const DarkStore = require('../../models/darkstore.model');
-const { Op }    = require('sequelize');
+const Product       = require('../../models/product.model');
+const Category      = require('../../models/category.model');
+const Inventory     = require('../../models/inventory.model');
+const { findNearestStore } = require('../../services/darkstore.service');
+const { Op }        = require('sequelize');
 
-// Cache the first active store ID to avoid a DB call on every request.
-// Refreshes every 5 minutes in case a store is activated/deactivated.
-let _cachedStoreId  = null;
-let _cacheExpiresAt = 0;
-
-async function getActiveStoreId() {
-  if (_cachedStoreId && Date.now() < _cacheExpiresAt) return _cachedStoreId;
-  const store = await DarkStore.findOne({ where: { is_active: true } });
-  _cachedStoreId  = store?.id ?? null;
-  _cacheExpiresAt = Date.now() + 5 * 60 * 1000;
-  return _cachedStoreId;
+// Resolve the best store for a given customer location.
+// lat/lng come from query params (customer sends their GPS coords).
+// Falls back to first active store when no coords given.
+async function getStoreId(lat, lng) {
+  const store = await findNearestStore(lat, lng);
+  return store?.id ?? null;
 }
 
 // Build a productId → stockQty map for a list of products from the active store.
@@ -72,7 +67,7 @@ const list = async (req, res) => {
       order:  [['created_at', 'DESC']],
     });
 
-    const storeId  = await getActiveStoreId();
+    const storeId  = await getStoreId(req.query.lat, req.query.lng);
     const stockMap = await buildStockMap(rows.map(p => p.id), storeId);
 
     return res.json({ products: rows.map(p => formatProduct(p, stockMap)), total: count });
@@ -90,7 +85,7 @@ const getById = async (req, res) => {
     });
     if (!product) return res.status(404).json({ message: 'Product not found' });
 
-    const storeId  = await getActiveStoreId();
+    const storeId  = await getStoreId(req.query.lat, req.query.lng);
     const stockMap = await buildStockMap([product.id], storeId);
     return res.json(formatProduct(product, stockMap));
   } catch (err) {
@@ -110,7 +105,7 @@ const search = async (req, res) => {
       limit: Number(limit),
     });
 
-    const storeId  = await getActiveStoreId();
+    const storeId  = await getStoreId(req.query.lat, req.query.lng);
     const stockMap = await buildStockMap(products.map(p => p.id), storeId);
     return res.json(products.map(p => formatProduct(p, stockMap)));
   } catch (err) {

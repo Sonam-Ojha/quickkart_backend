@@ -23,9 +23,11 @@ const stats = async (req, res) => {
 
 const add = async (req, res) => {
   try {
-    const { name, address, city, lat, lng, isActive } = req.body;
-    if (!name || !address || !city) return res.status(400).json({ message: 'name, address, city are required' });
-    const store = await svc.create({ name, address, city, lat, lng, isActive });
+    const { name, address, cityId, city, lat, lng, radius, isActive } = req.body;
+    if (!name || !address) return res.status(400).json({ message: 'name and address are required' });
+    if (!lat || !lng) return res.status(400).json({ message: 'latitude and longitude are required' });
+    if (!cityId) return res.status(400).json({ message: 'cityId is required' });
+    const store = await svc.create({ name, address, cityId, city, lat, lng, radius, isActive });
     res.status(201).json({ message: 'Store created', store });
   } catch (err) { res.status(400).json({ message: err.message }); }
 };
