@@ -1,8 +1,9 @@
 const Product       = require('../../models/product.model');
 const Category      = require('../../models/category.model');
 const Inventory     = require('../../models/inventory.model');
+const ProductStoreVisibility = require('../../models/product-store-visibility.model');
 const { findNearestStore } = require('../../services/darkstore.service');
-const { Op }        = require('sequelize');
+const { Op, literal } = require('sequelize');
 
 // Resolve the best store for a given customer location.
 // lat/lng come from query params (customer sends their GPS coords).
@@ -10,6 +11,18 @@ const { Op }        = require('sequelize');
 async function getStoreId(lat, lng) {
   const store = await findNearestStore(lat, lng);
   return store?.id ?? null;
+}
+
+// Returns a Sequelize Op.notIn clause excluding products disabled for this store.
+// If storeId is null, returns {} (no extra filter).
+async function buildVisibilityFilter(storeId) {
+  if (!storeId) return {};
+  const disabled = await ProductStoreVisibility.findAll({
+    where: { storeId, isEnabled: false },
+    attributes: ['productId'],
+  });
+  if (!disabled.length) return {};
+  return { id: { [Op.notIn]: disabled.map(r => r.productId) } };
 }
 
 // Build a productId → stockQty map for a list of products from the active store.
@@ -47,7 +60,10 @@ const formatProduct = (p, stockMap) => {
 const list = async (req, res) => {
   try {
     const { tag, category_id, category_name, q, limit = 20, offset = 0 } = req.query;
-    const where = { isActive: true };
+    const storeId = await getStoreId(req.query.lat, req.query.lng);
+    const visFilter = await buildVisibilityFilter(storeId);
+
+    const where = { isActive: true, ...visFilter };
     if (tag)         where.tag        = tag;
     if (category_id) where.categoryId = category_id;
     if (q)           where.name       = { [Op.like]: `%${q}%` };
@@ -67,9 +83,7 @@ const list = async (req, res) => {
       order:  [['created_at', 'DESC']],
     });
 
-    const storeId  = await getStoreId(req.query.lat, req.query.lng);
     const stockMap = await buildStockMap(rows.map(p => p.id), storeId);
-
     return res.json({ products: rows.map(p => formatProduct(p, stockMap)), total: count });
   } catch (err) {
     return res.status(500).json({ message: err.message });
@@ -79,13 +93,15 @@ const list = async (req, res) => {
 // GET /api/app/products/:id
 const getById = async (req, res) => {
   try {
+    const storeId = await getStoreId(req.query.lat, req.query.lng);
+    const visFilter = await buildVisibilityFilter(storeId);
+
     const product = await Product.findOne({
-      where: { id: req.params.id, isActive: true },
+      where: { id: req.params.id, isActive: true, ...visFilter },
       include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }],
     });
     if (!product) return res.status(404).json({ message: 'Product not found' });
 
-    const storeId  = await getStoreId(req.query.lat, req.query.lng);
     const stockMap = await buildStockMap([product.id], storeId);
     return res.json(formatProduct(product, stockMap));
   } catch (err) {
@@ -99,13 +115,15 @@ const search = async (req, res) => {
     const { q, limit = 20 } = req.query;
     if (!q) return res.json([]);
 
+    const storeId = await getStoreId(req.query.lat, req.query.lng);
+    const visFilter = await buildVisibilityFilter(storeId);
+
     const products = await Product.findAll({
-      where: { isActive: true, name: { [Op.like]: `%${q}%` } },
+      where: { isActive: true, name: { [Op.like]: `%${q}%` }, ...visFilter },
       include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }],
       limit: Number(limit),
     });
 
-    const storeId  = await getStoreId(req.query.lat, req.query.lng);
     const stockMap = await buildStockMap(products.map(p => p.id), storeId);
     return res.json(products.map(p => formatProduct(p, stockMap)));
   } catch (err) {

@@ -1,4 +1,6 @@
 const svc = require('../../services/catalog.service');
+const ProductStoreVisibility = require('../../models/product-store-visibility.model');
+const DarkStore = require('../../models/darkstore.model');
 
 // ── Categories ────────────────────────────────────────────
 
@@ -161,9 +163,50 @@ const bulkDeleteProducts = async (req, res) => {
   }
 };
 
+// ── Product Store Visibility ──────────────────────────────
+
+// GET /api/admin/catalog/products/:id/store-visibility
+// Returns all active stores, each with isEnabled flag for this product.
+// If no record → treated as enabled (default).
+const getProductStoreVisibility = async (req, res) => {
+  try {
+    const productId = Number(req.params.id);
+    const [stores, records] = await Promise.all([
+      DarkStore.findAll({ where: { isActive: true }, order: [['name', 'ASC']] }),
+      ProductStoreVisibility.findAll({ where: { productId } }),
+    ]);
+    const map = {};
+    for (const r of records) map[r.storeId] = r.isEnabled;
+
+    const result = stores.map(s => ({
+      storeId:   s.id,
+      storeName: s.name,
+      cityId:    s.cityId,
+      isEnabled: map[s.id] !== undefined ? map[s.id] : true,
+    }));
+    res.json({ visibility: result });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+// PUT /api/admin/catalog/products/:id/store-visibility
+// Body: { visibility: [{ storeId, isEnabled }] }
+const setProductStoreVisibility = async (req, res) => {
+  try {
+    const productId = Number(req.params.id);
+    const { visibility } = req.body;
+    if (!Array.isArray(visibility)) return res.status(400).json({ message: 'visibility array required' });
+
+    await Promise.all(visibility.map(({ storeId, isEnabled }) =>
+      ProductStoreVisibility.upsert({ productId, storeId, isEnabled: !!isEnabled })
+    ));
+    res.json({ message: 'Visibility updated' });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
 module.exports = {
   listCategories, addCategory, editCategory, removeCategory, toggleCategory,
   bulkCreateCategories, bulkUpdateCategories, bulkDeleteCategories,
   listProducts, addProduct, editProduct, removeProduct, toggleProduct,
   bulkCreateProducts, bulkUpdateProducts, bulkDeleteProducts,
+  getProductStoreVisibility, setProductStoreVisibility,
 };

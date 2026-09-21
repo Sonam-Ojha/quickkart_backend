@@ -28,6 +28,7 @@ require('./src/models/referral.model');         // → users
 
 // ── Models with multiple FK deps ────────────────────────
 require('./src/models/inventory.model');        // → products, dark_stores
+require('./src/models/product-store-visibility.model'); // → products, dark_stores
 require('./src/models/order.model');            // → users, dark_stores, riders, addresses, coupons
 require('./src/models/order-item.model');       // → orders, products
 require('./src/models/order-timeline.model');   // → orders

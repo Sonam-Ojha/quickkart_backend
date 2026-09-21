@@ -23,5 +23,7 @@ router.delete('/products/bulk',        authenticate, requireAdmin, ctrl.bulkDele
 router.put('/products/:id',            authenticate, requireAdmin, ctrl.editProduct);
 router.delete('/products/:id',         authenticate, requireAdmin, ctrl.removeProduct);
 router.patch('/products/:id/toggle',   authenticate, requireAdmin, ctrl.toggleProduct);
+router.get('/products/:id/store-visibility',  authenticate, requireAdmin, ctrl.getProductStoreVisibility);
+router.put('/products/:id/store-visibility',  authenticate, requireAdmin, ctrl.setProductStoreVisibility);
 
 module.exports = router;
