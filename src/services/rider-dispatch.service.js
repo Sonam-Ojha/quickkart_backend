@@ -44,28 +44,35 @@ const expireStale = async (riderId = null) => {
   await RiderOrderOffer.update({ state: 'expired', respondedAt: new Date() }, { where });
 };
 
-// Fan an order out to every free rider at its store. Idempotent: re-running it
-// for the same order tops up new riders rather than duplicating existing rows.
+// Fan an order out to ALL free active online riders (not store-filtered).
+// Idempotent: re-running tops up new riders rather than duplicating rows.
 const offerOrder = async (orderId) => {
-  const order = await Order.findByPk(orderId);
+  // Load order with address + items so notification body can be rich.
+  const order = await Order.findByPk(orderId, {
+    include: [
+      { model: Address,   as: 'address',  attributes: ['line1', 'area', 'city'] },
+      { model: OrderItem, as: 'items',
+        include: [{ model: Product, as: 'product', attributes: ['name'] }] },
+    ],
+  });
   if (!order) throw new Error('Order not found');
   if (order.riderId) return { offered: 0, reason: 'already assigned' };
 
+  // All active online riders — not restricted to one store.
   const riders = await Rider.findAll({
-    where: { storeId: order.storeId, status: 'active', isOnline: true },
+    where: { status: 'active', isOnline: true },
     attributes: ['id'],
   });
-  if (!riders.length) return { offered: 0, reason: 'no online riders at this store' };
+  if (!riders.length) return { offered: 0, reason: 'no online riders available' };
 
-  // Skip riders already busy with a live delivery.
+  // Skip riders already on a live delivery.
   const busy = await Order.findAll({
     where: { riderId: riders.map(r => r.id), riderStage: { [Op.in]: ['accepted','at_store','to_customer','at_customer'] } },
     attributes: ['riderId'],
   });
   const busyIds = new Set(busy.map(o => o.riderId));
 
-  // And skip anyone who already said no to this order, or the retry sweep
-  // would keep pushing the same card back at them.
+  // Skip anyone who already rejected this order.
   const refused = await RiderOrderOffer.findAll({
     where: { orderId: order.id, state: { [Op.in]: ['rejected', 'lost'] } },
     attributes: ['riderId'],
@@ -73,7 +80,7 @@ const offerOrder = async (orderId) => {
   const refusedIds = new Set(refused.map(o => o.riderId));
 
   const eligible = riders.filter(r => !busyIds.has(r.id) && !refusedIds.has(r.id));
-  if (!eligible.length) return { offered: 0, reason: 'no free rider left to offer' };
+  if (!eligible.length) return { offered: 0, reason: 'no free rider available' };
 
   const expiresAt = new Date(Date.now() + OFFER_TTL_SEC * 1000);
   await RiderOrderOffer.bulkCreate(
@@ -83,7 +90,7 @@ const offerOrder = async (orderId) => {
   await Rider.increment('offeredCount', { where: { id: eligible.map(r => r.id) } });
   await order.update({ riderStage: 'offered', assignedAt: new Date(), ...computePayout(order) });
 
-  // Notify each eligible rider
+  // Notify every eligible rider with rich location + items info.
   eligible.forEach(r => notifyRiderNewOrder(r.id, order).catch(() => {}));
 
   return { offered: eligible.length, expiresAt };

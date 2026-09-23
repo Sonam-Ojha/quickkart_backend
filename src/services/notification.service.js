@@ -93,9 +93,24 @@ const notifyOrderStatus = async (order, newStatus) => {
 };
 
 const notifyRiderNewOrder = async (riderId, order) => {
+  // Build location line from address if available.
+  const addr = order.address;
+  const location = addr
+    ? [addr.area, addr.city].filter(Boolean).join(', ') || addr.line1 || 'Customer location'
+    : 'Customer location';
+
+  // Build items summary: "Milk, Bread, Eggs" or "Milk, Bread (+3 more)"
+  const items = (order.items ?? []).map(i => i.product?.name).filter(Boolean);
+  const MAX_SHOW = 3;
+  const itemsLine = items.length === 0
+    ? `${order.itemCount ?? '?'} items`
+    : items.length <= MAX_SHOW
+      ? items.join(', ')
+      : `${items.slice(0, MAX_SHOW).join(', ')} (+${items.length - MAX_SHOW} more)`;
+
   await sendToRider(riderId, {
-    title: '🛵 New Order Available!',
-    body:  `Order #${order.id} — ₹${order.total}. Accept within 60s.`,
+    title: `🛵 New Order — ₹${Math.round((order.total ?? 0) / 100)}`,
+    body:  `📍 ${location}\n🛒 ${itemsLine}`,
     data:  { orderId: String(order.id), type: 'new_order', screen: 'OrderOffer' },
   });
 };

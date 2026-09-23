@@ -1,7 +1,9 @@
-const svc      = require('../../services/order.service');
-const Order    = require('../../models/order.model');
-const Rider    = require('../../models/rider.model');
-const dispatch = require('../../services/rider-dispatch.service');
+const svc             = require('../../services/order.service');
+const Order           = require('../../models/order.model');
+const Rider           = require('../../models/rider.model');
+const RiderOrderOffer = require('../../models/rider-order-offer.model');
+const dispatch        = require('../../services/rider-dispatch.service');
+const { notifyRiderNewOrder } = require('../../services/notification.service');
 
 const stats = async (req, res) => {
   try { res.json(await svc.getStats()); }
@@ -48,13 +50,40 @@ const assignRider = async (req, res) => {
       const rider = await Rider.findByPk(riderId);
       if (!rider) return res.status(404).json({ message: 'Rider not found' });
       if (rider.status !== 'active') return res.status(400).json({ message: 'Rider is not active' });
+
+      // Cancel any other pending offers on this order so only this rider sees it.
+      await RiderOrderOffer.update(
+        { state: 'expired', respondedAt: new Date() },
+        { where: { orderId: order.id, state: 'pending' } }
+      );
+
+      // Create (or re-activate) an offer row so the rider's poll picks it up.
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5-min window
+      await RiderOrderOffer.upsert({
+        riderId, orderId: order.id, state: 'pending', expiresAt,
+      });
+
+      // Set riderStage to 'offered' — rider must accept via normal flow.
+      await order.update({
+        riderStage: 'offered',
+        assignedAt: new Date(),
+        ...dispatch.computePayout(order),
+      });
+
+      // Fire-and-forget FCM
+      notifyRiderNewOrder(riderId, order).catch(() => {});
+
+    } else {
+      // Unassign: cancel any open offers and clear rider from order.
+      await RiderOrderOffer.update(
+        { state: 'expired', respondedAt: new Date() },
+        { where: { orderId: order.id, state: 'pending' } }
+      );
+      await order.update({ riderId: null, riderStage: null });
     }
 
-    await order.update(riderId
-      ? { riderId, riderStage: 'accepted', assignedAt: new Date(), acceptedAt: new Date(), ...dispatch.computePayout(order) }
-      : { riderId: null, riderStage: null });
     const updated = await svc.getById(order.id);
-    res.json({ message: riderId ? 'Rider assigned' : 'Rider unassigned', order: updated });
+    res.json({ message: riderId ? 'Rider offer sent' : 'Rider unassigned', order: updated });
   } catch (err) { res.status(400).json({ message: err.message }); }
 };
 
