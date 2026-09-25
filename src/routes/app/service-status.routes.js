@@ -37,20 +37,25 @@ router.get('/', async (req, res) => {
       const isInAnyShift = hours.shifts.some(s => {
         const open  = toMins(s.open);
         const close = toMins(s.close);
-        return mins >= open && mins < close;
+        // An overnight shift (e.g. 15:00–02:00) wraps past midnight, so being
+        // in it means "at or after open" OR "before close", not both at once.
+        return close < open
+          ? (mins >= open || mins < close)
+          : (mins >= open && mins < close);
       });
 
       if (!isInAnyShift) {
-        // Find next opening time
-        const nextShift = hours.shifts
+        // Find next opening time, wrapping to tomorrow's earliest shift if
+        // every shift for today has already started.
+        const byOpen = hours.shifts
           .map(s => ({ ...s, openMins: toMins(s.open) }))
-          .filter(s => s.openMins > mins)
-          .sort((a, b) => a.openMins - b.openMins)[0];
+          .sort((a, b) => a.openMins - b.openMins);
+        const nextShift = byOpen.find(s => s.openMins > mins) || byOpen[0];
 
         return res.json({
           isOpen: false,
           message: cfg.closed_message || "We're closed for now.",
-          reopensAt: nextShift ? nextShift.open : hours.shifts[0]?.open || '',
+          reopensAt: nextShift ? nextShift.open : '',
           nextShiftName: nextShift?.name || '',
         });
       }

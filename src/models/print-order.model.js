@@ -19,6 +19,8 @@ const PrintOrder = sequelize.define('PrintOrder', {
 }, {
   tableName:   'print_orders',
   underscored: true,
+  createdAt:   'created_at',
+  updatedAt:   'updated_at',
 });
 
 PrintOrder.belongsTo(User, { foreignKey: 'customer_id', as: 'customer' });

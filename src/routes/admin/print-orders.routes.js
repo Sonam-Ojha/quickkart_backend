@@ -8,6 +8,23 @@ const VALID_STATUSES = ['pending', 'confirmed', 'printing', 'delivered', 'cancel
 
 router.use(authenticate, requireAdmin);
 
+// GET /api/admin/print-orders/stats
+router.get('/stats', async (req, res) => {
+  try {
+    const [total, pending, confirmed, printing, delivered, cancelled] = await Promise.all([
+      PrintOrder.count(),
+      PrintOrder.count({ where: { status: 'pending' } }),
+      PrintOrder.count({ where: { status: 'confirmed' } }),
+      PrintOrder.count({ where: { status: 'printing' } }),
+      PrintOrder.count({ where: { status: 'delivered' } }),
+      PrintOrder.count({ where: { status: 'cancelled' } }),
+    ]);
+    res.json({ total, pending, confirmed, printing, delivered, cancelled });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // GET /api/admin/print-orders
 router.get('/', async (req, res) => {
   try {
