@@ -1,6 +1,8 @@
 const https  = require('https');
 const router = require('express').Router();
 
+const GOOGLE_API_KEY = 'AIzaSyDoTvasMdk4HQhrfTO5pWkEGJAfhbVcqAk';
+
 // ── Config ─────────────────────────────────────────────────────────────────────
 const CACHE_TTL_MS      = 60 * 60 * 1000;  // 1 hour
 const CACHE_GRID_DEG    = 0.002;            // ~200 m grid cell for cache key
@@ -55,9 +57,31 @@ function validateCoords(lat, lng) {
   return { lat: la, lng: ln };
 }
 
+// ── Google Maps API fetch (server-side — no CORS) ────────────────────────────
+
+function googleFetch(path) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'maps.googleapis.com',
+      path,
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch { reject(new Error('Invalid Google response')); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(8000, () => { req.destroy(); reject(new Error('Google timeout')); });
+    req.end();
+  });
+}
+
 // ── Abstract geocoding provider ───────────────────────────────────────────────
-// To swap provider: only change this function.
-// Returns: { locality, area, city, state, postalCode, country, formattedAddress } | null
 
 function nominatimFetch(path) {
   return new Promise((resolve, reject) => {
@@ -86,24 +110,49 @@ function nominatimFetch(path) {
 }
 
 async function reverseGeocodeProvider(lat, lng) {
+  // Try Google first (most accurate)
+  try {
+    const g = await googleFetch(
+      `/maps/api/geocode/json?latlng=${lat},${lng}&language=en&key=${GOOGLE_API_KEY}`
+    );
+    if (g.status === 'OK' && g.results && g.results.length > 0) {
+      const result = g.results[0];
+      const comps  = result.address_components || [];
+      const get    = (type) => (comps.find(c => c.types.includes(type)) || {}).long_name || '';
+      const locality = get('sublocality_level_2') || get('sublocality_level_1') ||
+                       get('sublocality') || get('locality') || 'Current Location';
+      const area = [
+        get('sublocality_level_2'),
+        get('sublocality_level_1'),
+        get('locality'),
+        get('administrative_area_level_2'),
+      ].filter(Boolean).join(', ');
+      return {
+        locality,
+        area:             area || result.formatted_address,
+        city:             get('locality') || get('administrative_area_level_2'),
+        state:            get('administrative_area_level_1'),
+        postalCode:       get('postal_code'),
+        country:          get('country'),
+        formattedAddress: result.formatted_address,
+      };
+    }
+  } catch (_) {}
+
+  // Fallback: Nominatim
   const raw = await nominatimFetch(
     `/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=18`
   );
   if (!raw || raw.error) return null;
 
   const a = raw.address || {};
-
-  // Indian addresses: "Sector 21 / DLF Phase 3" usually arrive as `residential`;
-  // colony / zone names as `city_district`, `suburb` or `hamlet`.
   const micro = a.residential || a.neighbourhood || a.quarter || a.allotments || '';
   const sub   = a.suburb || a.city_district || a.hamlet || a.borough || '';
   const road  = a.road || a.pedestrian || a.footway || a.cycleway || '';
   const house = a.house_number || '';
   const city  = a.city || a.town || a.municipality || a.village ||
                 a.county || a.state_district || '';
-
   const locality = micro || sub || road || city || 'Current Location';
-
   const area = [
     [house, road].filter(Boolean).join(' '),
     micro,
@@ -163,6 +212,72 @@ async function searchGeocodeProvider(query) {
 }
 
 // ── Routes ─────────────────────────────────────────────────────────────────────
+
+// GET /api/app/location/places?q=subhash+chowk+faridabad
+// Google Places Autocomplete proxy — no CORS issue from server
+router.get('/places', async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (q.length < 2) return res.status(400).json({ message: 'Query too short.' });
+
+  const cacheKey = `gplaces:${q.toLowerCase()}`;
+  const cached   = cacheGet(cacheKey);
+  if (cached) return res.json({ predictions: cached, cached: true });
+
+  try {
+    const data = await googleFetch(
+      `/maps/api/place/autocomplete/json?input=${encodeURIComponent(q)}&components=country:in&language=en&key=${GOOGLE_API_KEY}`
+    );
+    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+      return res.status(502).json({ message: 'Places API error: ' + data.status });
+    }
+    const predictions = (data.predictions || []).map(p => ({
+      placeId:       p.place_id,
+      mainText:      p.structured_formatting?.main_text || p.description,
+      secondaryText: p.structured_formatting?.secondary_text || '',
+      description:   p.description,
+    }));
+    cacheSet(cacheKey, predictions);
+    res.json({ predictions });
+  } catch (err) {
+    console.error('[location/places]', err.message);
+    res.status(502).json({ message: 'Places search failed.' });
+  }
+});
+
+// GET /api/app/location/places/details?place_id=ChIJ...
+router.get('/places/details', async (req, res) => {
+  const placeId = String(req.query.place_id || '').trim();
+  if (!placeId) return res.status(400).json({ message: 'place_id required.' });
+
+  const cacheKey = `gpdetails:${placeId}`;
+  const cached   = cacheGet(cacheKey);
+  if (cached) return res.json(cached);
+
+  try {
+    const data = await googleFetch(
+      `/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=geometry,address_components,name,formatted_address&language=en&key=${GOOGLE_API_KEY}`
+    );
+    if (data.status !== 'OK') {
+      return res.status(502).json({ message: 'Place details error: ' + data.status });
+    }
+    const r     = data.result;
+    const loc   = r.geometry?.location;
+    const comps = r.address_components || [];
+    const get   = (type) => (comps.find(c => c.types.includes(type)) || {}).long_name || '';
+    const result = {
+      lat:             loc.lat,
+      lng:             loc.lng,
+      label:           r.name || get('sublocality_level_1') || 'Location',
+      area:            r.formatted_address || '',
+      pincode:         get('postal_code'),
+    };
+    cacheSet(cacheKey, result);
+    res.json(result);
+  } catch (err) {
+    console.error('[location/places/details]', err.message);
+    res.status(502).json({ message: 'Place details failed.' });
+  }
+});
 
 // GET /api/app/location/reverse?lat=28.57&lng=77.32
 router.get('/reverse', async (req, res) => {
