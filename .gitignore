@@ -36,3 +36,6 @@ coverage/
 # Misc
 *.local
 .tern-port
+
+# Firebase service account — contains private key, never commit
+serviceAccountKey.json
