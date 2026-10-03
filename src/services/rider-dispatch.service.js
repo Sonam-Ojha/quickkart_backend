@@ -50,7 +50,7 @@ const offerOrder = async (orderId) => {
   // Load order with address + items so notification body can be rich.
   const order = await Order.findByPk(orderId, {
     include: [
-      { model: Address,   as: 'address',  attributes: ['line1', 'area', 'city'] },
+      { model: Address,   as: 'address',  attributes: ['line1', 'line2', 'city'] },
       { model: OrderItem, as: 'items',
         include: [{ model: Product, as: 'product', attributes: ['name'] }] },
     ],
