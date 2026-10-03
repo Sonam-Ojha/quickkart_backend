@@ -11,6 +11,9 @@ const Category = sequelize.define('Category', {
   isActive:  { type: DataTypes.BOOLEAN, defaultValue: true, field: 'is_active' },
   showInFilter: { type: DataTypes.BOOLEAN, defaultValue: true, field: 'show_in_filter' },
   showInGrid:   { type: DataTypes.BOOLEAN, defaultValue: true, field: 'show_in_grid' },
+  // Which app tab the category belongs to: 'grocery' → Category tab, 'fresh' → Fresh tab.
+  // Sub-categories always inherit their parent's section.
+  section:      { type: DataTypes.ENUM('grocery', 'fresh'), allowNull: false, defaultValue: 'grocery' },
 }, {
   tableName: 'categories',
   timestamps: true,

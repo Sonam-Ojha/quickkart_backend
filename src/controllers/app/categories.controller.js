@@ -14,9 +14,12 @@ const formatProduct = (p) => ({
   inStock:       p.isActive,
 });
 
+// GET /api/app/categories?section=grocery|fresh  (no section → all)
 const list = async (req, res) => {
   try {
-    const categories = await Category.findAll({ where: { is_active: true }, order: [['name', 'ASC']] });
+    const where = { is_active: true };
+    if (['grocery', 'fresh'].includes(req.query.section)) where.section = req.query.section;
+    const categories = await Category.findAll({ where, order: [['name', 'ASC']] });
 
     const products = await Product.findAll({
       where: { isActive: true },

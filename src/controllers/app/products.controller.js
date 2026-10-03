@@ -56,10 +56,10 @@ const formatProduct = (p, stockMap) => {
   };
 };
 
-// GET /api/app/products?tag=deal|bestseller|new&category_name=Fresh&category_id=1&limit=12&offset=0
+// GET /api/app/products?tag=deal|bestseller|new&category_name=Fresh&category_id=1&section=fresh&limit=12&offset=0
 const list = async (req, res) => {
   try {
-    const { tag, category_id, category_name, q, limit = 20, offset = 0 } = req.query;
+    const { tag, category_id, category_name, section, q, limit = 20, offset = 0 } = req.query;
     const storeId = await getStoreId(req.query.lat, req.query.lng);
     const visFilter = await buildVisibilityFilter(storeId);
 
@@ -70,6 +70,7 @@ const list = async (req, res) => {
 
     const includeWhere = {};
     if (category_name) includeWhere.name = category_name;
+    if (['grocery', 'fresh'].includes(section)) includeWhere.section = section;
 
     const { rows, count } = await Product.findAndCountAll({
       where,

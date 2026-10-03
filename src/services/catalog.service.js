@@ -4,18 +4,37 @@ const Product = require('../models/product.model');
 
 // ── Categories ────────────────────────────────────────────
 
-const getAllCategories = async () => {
-  return Category.findAll({ order: [['sort_order', 'ASC'], ['id', 'ASC']] });
+const SECTIONS = ['grocery', 'fresh'];
+
+const getAllCategories = async ({ section } = {}) => {
+  const where = SECTIONS.includes(section) ? { section } : {};
+  return Category.findAll({ where, order: [['sort_order', 'ASC'], ['id', 'ASC']] });
 };
 
-const createCategory = async ({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid }) => {
-  return Category.create({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid });
+// A sub-category always lives in its parent's section; a main category uses
+// the requested one (default grocery).
+const resolveSection = async (parentId, section) => {
+  if (parentId) {
+    const parent = await Category.findByPk(parentId);
+    if (!parent) throw new Error('Parent category not found');
+    return parent.section;
+  }
+  return SECTIONS.includes(section) ? section : 'grocery';
+};
+
+const createCategory = async ({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid, section }) => {
+  const resolved = await resolveSection(parentId, section);
+  return Category.create({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid, section: resolved });
 };
 
 const updateCategory = async (id, data) => {
   const cat = await Category.findByPk(id);
   if (!cat) throw new Error('Category not found');
-  await cat.update(data);
+  const parentId = data.parentId !== undefined ? data.parentId : cat.parentId;
+  const section = await resolveSection(parentId, data.section ?? cat.section);
+  await cat.update({ ...data, section });
+  // Keep the subtree in the same section when a main category moves.
+  if (!parentId) await Category.update({ section }, { where: { parentId: cat.id } });
   return cat;
 };
 
@@ -40,10 +59,11 @@ const toggleCategory = async (id) => {
 const bulkCreateCategories = async (rows) => {
   if (!Array.isArray(rows) || rows.length === 0) throw new Error('rows array is required');
   const created = await Promise.all(
-    rows.map(({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid }) =>
+    rows.map(async ({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid, section }) =>
       Category.create({
         name, parentId: parentId || null, icon: icon || null, imageUrl: imageUrl || null, sortOrder: sortOrder || 0, isActive: isActive !== false,
         showInFilter: showInFilter !== false, showInGrid: showInGrid !== false,
+        section: await resolveSection(parentId, section),
       }),
     ),
   );

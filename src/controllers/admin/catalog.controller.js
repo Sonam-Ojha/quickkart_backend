@@ -6,7 +6,7 @@ const DarkStore = require('../../models/darkstore.model');
 
 const listCategories = async (req, res) => {
   try {
-    const categories = await svc.getAllCategories();
+    const categories = await svc.getAllCategories({ section: req.query.section });
     res.json({ categories });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -15,9 +15,9 @@ const listCategories = async (req, res) => {
 
 const addCategory = async (req, res) => {
   try {
-    const { name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid } = req.body;
+    const { name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid, section } = req.body;
     if (!name) return res.status(400).json({ message: 'name is required' });
-    const category = await svc.createCategory({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid });
+    const category = await svc.createCategory({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid, section });
     res.status(201).json({ message: 'Category created', category });
   } catch (err) {
     res.status(400).json({ message: err.message });
