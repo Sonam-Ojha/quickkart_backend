@@ -14,17 +14,18 @@ const list = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { label, line1, line2, city, state, pincode, lat, lng, is_default } = req.body;
+    const { label, line1, line2, city, state, pincode, lat, lng, phone, is_default } = req.body;
     const address = await Address.create({
       userId: req.user.id,
       label,
       line1,
-      line2,
-      city,
-      state,
+      line2: line2 ?? '',
+      city:  city  ?? '',
+      state: state ?? '',
       pincode: pincode ?? '',
       lat,
       lng,
+      phone: phone ?? '',
       isDefault: is_default ?? false,
     });
     return res.status(201).json(address);

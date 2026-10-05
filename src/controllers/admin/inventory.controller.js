@@ -49,4 +49,13 @@ const removeStock = async (req, res) => {
   }
 };
 
-module.exports = { listByStore, setStock, adjustStock, removeStock };
+const listByProduct = async (req, res) => {
+  try {
+    const rows = await svc.getByProduct(req.params.productId);
+    res.json({ inventory: rows.map(r => ({ storeId: r.storeId, storeName: r.store?.name ?? '', stockQty: r.stockQty })) });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { listByStore, listByProduct, setStock, adjustStock, removeStock };

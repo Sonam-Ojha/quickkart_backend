@@ -45,4 +45,12 @@ const remove = async (storeId, productId) => {
   await row.destroy();
 };
 
-module.exports = { getByStore, upsert, adjust, remove };
+const getByProduct = async (productId) => {
+  const DarkStore = require('../models/darkstore.model');
+  return Inventory.findAll({
+    where: { productId },
+    include: [{ model: DarkStore, as: 'store', attributes: ['id', 'name'] }],
+  });
+};
+
+module.exports = { getByStore, getByProduct, upsert, adjust, remove };

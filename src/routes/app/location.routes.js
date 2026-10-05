@@ -306,6 +306,30 @@ router.get('/reverse', async (req, res) => {
   }
 });
 
+// GET /api/app/location/serviceability?lat=28.57&lng=77.32
+// Check if Jhatpats delivers to the given coordinates.
+router.get('/serviceability', async (req, res) => {
+  const coords = validateCoords(req.query.lat, req.query.lng);
+  if (!coords) {
+    return res.status(400).json({ message: 'Invalid lat/lng.' });
+  }
+  try {
+    const { findNearestStore } = require('../../services/darkstore.service');
+    const { store, distanceKm } = await findNearestStore(coords.lat, coords.lng);
+    if (!store) {
+      return res.json({ serviceable: false });
+    }
+    return res.json({
+      serviceable:  true,
+      storeName:    store.name,
+      distanceKm:   Math.round(distanceKm * 10) / 10,
+      eta:          '10 minutes',
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
 // GET /api/app/location/search?q=Sector 18 Noida
 router.get('/search', async (req, res) => {
   const q = String(req.query.q || '').trim();

@@ -5,6 +5,7 @@ const { requireAdmin }  = require('../../middlewares/admin.middleware');
 const ctrl = require('../../controllers/admin/inventory.controller');
 
 router.get('/store/:storeId',                    authenticate, requireAdmin, ctrl.listByStore);
+router.get('/product/:productId',                authenticate, requireAdmin, ctrl.listByProduct);
 router.post('/store/:storeId',                   authenticate, requireAdmin, ctrl.setStock);
 router.patch('/store/:storeId/adjust',           authenticate, requireAdmin, ctrl.adjustStock);
 router.delete('/store/:storeId/product/:productId', authenticate, requireAdmin, ctrl.removeStock);

@@ -44,24 +44,38 @@ const getStats = async (id) => {
 };
 
 // Find the nearest active store that covers the given coordinates.
-// Returns the store object or null if none covers this location.
+// Returns { store, distanceKm, fallback } or { store: null } if none covers this location.
+//
+// Geofencing logic:
+//   - No lat/lng from customer        → fallback to first active store (preview mode)
+//   - Store has no lat/lng configured → that store has NO geofence (serves everywhere)
+//   - Store has lat/lng configured    → strict radius check applies
 const findNearestStore = async (lat, lng) => {
-  if (!lat || !lng) {
-    // Fallback: first active store
-    return DarkStore.findOne({ where: { isActive: true } });
-  }
   const stores = await DarkStore.findAll({ where: { isActive: true } });
+  if (!stores.length) return { store: null, distanceKm: null, fallback: false };
+
+  if (!lat || !lng) {
+    // No customer location — return first active store (web preview / no-location mode)
+    return { store: stores[0], distanceKm: 0, fallback: true };
+  }
+
+  // Check if any store has NO lat/lng (serves everywhere — geofence not configured)
+  const ungeofenced = stores.find(s => !s.lat || !s.lng);
+  if (ungeofenced) {
+    return { store: ungeofenced, distanceKm: 0, fallback: true };
+  }
+
+  // All stores have coordinates — apply strict radius check
   let nearest = null;
   let minDist = Infinity;
   for (const store of stores) {
-    if (!store.lat || !store.lng) continue;
     const dist = haversineKm(Number(lat), Number(lng), Number(store.lat), Number(store.lng));
     if (dist <= Number(store.radius) && dist < minDist) {
       minDist = dist;
       nearest = store;
     }
   }
-  return nearest;
+  return { store: nearest, distanceKm: nearest ? minDist : null, fallback: false };
 };
 
 const create = async ({ name, address, cityId, city, lat, lng, radius, isActive }) => {
