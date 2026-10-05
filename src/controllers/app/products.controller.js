@@ -17,18 +17,6 @@ async function resolveStore(lat, lng) {
   return { storeId: store?.id ?? null, serviceable: true };
 }
 
-// Returns productId filter: only products assigned to this store (have an inventory record).
-// If storeId is null, returns {} (no filter — show all, e.g. admin preview).
-async function buildStoreFilter(storeId) {
-  if (!storeId) return {};
-  const rows = await Inventory.findAll({
-    where: { storeId },
-    attributes: ['productId'],
-  });
-  if (!rows.length) return { id: { [Op.in]: [] } }; // store exists but no products assigned
-  return { id: { [Op.in]: rows.map(r => r.productId) } };
-}
-
 // Build a productId → stockQty map for a list of products from the active store.
 async function buildStockMap(productIds, storeId) {
   if (!storeId || !productIds.length) return {};
@@ -41,9 +29,11 @@ async function buildStockMap(productIds, storeId) {
   return map;
 }
 
-const formatProduct = (p, stockMap) => {
-  const stock    = stockMap && p.id in stockMap ? stockMap[p.id] : 0;
-  const inStock  = p.isActive && stock > 0;
+const formatProduct = (p, stockMap, serviceable) => {
+  const inMap     = stockMap != null && p.id in stockMap;
+  const available = serviceable !== false && inMap;
+  const stock     = inMap ? stockMap[p.id] : 0;
+  const inStock   = available && p.isActive && stock > 0;
   return {
     id:            p.id,
     name:          p.name,
@@ -53,8 +43,9 @@ const formatProduct = (p, stockMap) => {
     img:           p.imageUrl ?? '',
     badge:         p.tag      ?? null,
     category:      p.category?.name ?? '',
+    available,
     inStock,
-    stock,          // null = unlimited, 0 = out of stock, N = available qty
+    stock,
   };
 };
 
@@ -64,13 +55,7 @@ const list = async (req, res) => {
     const { tag, category_id, category_name, section, q, limit = 20, offset = 0 } = req.query;
     const { storeId, serviceable } = await resolveStore(req.query.lat, req.query.lng);
 
-    if (!serviceable) {
-      return res.json({ products: [], total: 0, serviceable: false });
-    }
-
-    const visFilter = await buildStoreFilter(storeId);
-
-    const where = { isActive: true, ...visFilter };
+    const where = { isActive: true };
     if (tag)         where.tag        = tag;
     if (category_id) where.categoryId = category_id;
     if (q)           where.name       = { [Op.like]: `%${q}%` };
@@ -92,7 +77,7 @@ const list = async (req, res) => {
     });
 
     const stockMap = await buildStockMap(rows.map(p => p.id), storeId);
-    return res.json({ products: rows.map(p => formatProduct(p, stockMap)), total: count, serviceable: true });
+    return res.json({ products: rows.map(p => formatProduct(p, stockMap, serviceable)), total: count, serviceable: serviceable ?? true });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
@@ -101,17 +86,16 @@ const list = async (req, res) => {
 // GET /api/app/products/:id
 const getById = async (req, res) => {
   try {
-    const { storeId } = await resolveStore(req.query.lat, req.query.lng);
-    const visFilter = await buildStoreFilter(storeId);
+    const { storeId, serviceable } = await resolveStore(req.query.lat, req.query.lng);
 
     const product = await Product.findOne({
-      where: { id: req.params.id, isActive: true, ...visFilter },
+      where: { id: req.params.id, isActive: true },
       include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }],
     });
     if (!product) return res.status(404).json({ message: 'Product not found' });
 
     const stockMap = await buildStockMap([product.id], storeId);
-    return res.json(formatProduct(product, stockMap));
+    return res.json(formatProduct(product, stockMap, serviceable));
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
@@ -123,17 +107,16 @@ const search = async (req, res) => {
     const { q, limit = 20 } = req.query;
     if (!q) return res.json([]);
 
-    const { storeId } = await resolveStore(req.query.lat, req.query.lng);
-    const visFilter = await buildStoreFilter(storeId);
+    const { storeId, serviceable } = await resolveStore(req.query.lat, req.query.lng);
 
     const products = await Product.findAll({
-      where: { isActive: true, name: { [Op.like]: `%${q}%` }, ...visFilter },
+      where: { isActive: true, name: { [Op.like]: `%${q}%` } },
       include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }],
       limit: Number(limit),
     });
 
     const stockMap = await buildStockMap(products.map(p => p.id), storeId);
-    return res.json(products.map(p => formatProduct(p, stockMap)));
+    return res.json(products.map(p => formatProduct(p, stockMap, serviceable)));
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }

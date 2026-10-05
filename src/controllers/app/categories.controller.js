@@ -4,9 +4,11 @@ const Inventory = require('../../models/inventory.model');
 const { findNearestStore } = require('../../services/darkstore.service');
 const { Op } = require('sequelize');
 
-const formatProduct = (p, stockMap) => {
-  const stock   = stockMap && p.id in stockMap ? stockMap[p.id] : 0;
-  const inStock = p.isActive && stock > 0;
+const formatProduct = (p, stockMap, serviceable) => {
+  const inMap     = stockMap != null && p.id in stockMap;
+  const available = serviceable !== false && inMap;
+  const stock     = inMap ? stockMap[p.id] : 0;
+  const inStock   = available && p.isActive && stock > 0;
   return {
     id:            p.id,
     name:          p.name,
@@ -16,17 +18,11 @@ const formatProduct = (p, stockMap) => {
     img:           p.imageUrl  ?? '',
     badge:         p.tag       ?? null,
     category:      p.category?.name ?? '',
+    available,
     inStock,
     stock,
   };
 };
-
-// Returns productIds assigned to a store (have inventory record).
-async function getAssignedProductIds(storeId) {
-  if (!storeId) return null; // null = no filter
-  const rows = await Inventory.findAll({ where: { storeId }, attributes: ['productId'] });
-  return rows.map(r => r.productId);
-}
 
 async function buildStockMap(productIds, storeId) {
   if (!storeId || !productIds.length) return {};
@@ -40,8 +36,9 @@ async function buildStockMap(productIds, storeId) {
 }
 
 async function resolveStore(lat, lng) {
-  const { store } = await findNearestStore(lat, lng);
-  return store?.id ?? null;
+  const { store, fallback } = await findNearestStore(lat, lng);
+  if (!store && !fallback) return { storeId: null, serviceable: false };
+  return { storeId: store?.id ?? null, serviceable: true };
 }
 
 // GET /api/app/categories?section=grocery|fresh  (no section → all)
@@ -51,14 +48,10 @@ const list = async (req, res) => {
     if (['grocery', 'fresh'].includes(req.query.section)) where.section = req.query.section;
     const categories = await Category.findAll({ where, order: [['name', 'ASC']] });
 
-    const storeId    = await resolveStore(req.query.lat, req.query.lng);
-    const assignedIds = await getAssignedProductIds(storeId);
-
-    const productWhere = { isActive: true };
-    if (assignedIds !== null) productWhere.id = { [Op.in]: assignedIds };
+    const { storeId } = await resolveStore(req.query.lat, req.query.lng);
 
     const products = await Product.findAll({
-      where: productWhere,
+      where: { isActive: true },
       attributes: ['id', 'categoryId', 'imageUrl'],
       order: [['created_at', 'DESC']],
     });
@@ -100,11 +93,9 @@ const products = async (req, res) => {
     const category = await Category.findByPk(id);
     if (!category) return res.status(404).json({ message: 'Category not found' });
 
-    const storeId     = await resolveStore(req.query.lat, req.query.lng);
-    const assignedIds = await getAssignedProductIds(storeId);
+    const { storeId, serviceable } = await resolveStore(req.query.lat, req.query.lng);
 
     const where = { category_id: id, is_active: true };
-    if (assignedIds !== null) where.id = { [Op.in]: assignedIds };
 
     const { rows, count } = await Product.findAndCountAll({
       where,
@@ -115,7 +106,7 @@ const products = async (req, res) => {
     });
 
     const stockMap = await buildStockMap(rows.map(p => p.id), storeId);
-    return res.json({ category, products: rows.map(p => formatProduct(p, stockMap)), total: count });
+    return res.json({ category, products: rows.map(p => formatProduct(p, stockMap, serviceable)), total: count });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
@@ -133,11 +124,9 @@ const allProducts = async (req, res) => {
     const children = await Category.findAll({ where: { parent_id: id, is_active: true } });
     const catIds   = [Number(id), ...children.map((c) => c.id)];
 
-    const storeId     = await resolveStore(req.query.lat, req.query.lng);
-    const assignedIds = await getAssignedProductIds(storeId);
+    const { storeId, serviceable } = await resolveStore(req.query.lat, req.query.lng);
 
     const where = { categoryId: { [Op.in]: catIds }, isActive: true };
-    if (assignedIds !== null) where.id = { [Op.in]: assignedIds };
 
     const { rows, count } = await Product.findAndCountAll({
       where,
@@ -148,7 +137,7 @@ const allProducts = async (req, res) => {
     });
 
     const stockMap = await buildStockMap(rows.map(p => p.id), storeId);
-    return res.json({ category, subcategories: children, products: rows.map(p => formatProduct(p, stockMap)), total: count });
+    return res.json({ category, subcategories: children, products: rows.map(p => formatProduct(p, stockMap, serviceable)), total: count });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }

@@ -9,7 +9,7 @@ const sequelize = new Sequelize(
     port:    Number(process.env.DB_PORT) || 3306,
     dialect: 'mysql',
     logging: false,
-    dialectOptions: { connectTimeout: 30000, ssl: false },
+    dialectOptions: { connectTimeout: 30000, ssl: { rejectUnauthorized: false } },
     pool: {
       max:     2,      // max 2 connections — well under Hostinger's limit
       min:     0,      // release connections when idle instead of keeping one open
