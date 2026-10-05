@@ -59,16 +59,8 @@ const sendOtp = async (req, res) => {
       const blocked = blockedReason(rider);
       if (blocked) return res.status(403).json({ message: blocked });
     }
-    const result = await otpService.sendOtpSms(mobile);
-    // With no SMS provider configured nothing reaches the phone, so surface
-    // the code to unblock local testing. `result.otp` is only ever set on the
-    // dev branch — once FAST2SMS_API_KEY exists this stops being sent.
-    res.json({
-      sent: true,
-      registered: !!rider,
-      dev: result.dev || false,
-      ...(result.otp ? { devOtp: result.otp } : {}),
-    });
+    await otpService.sendOtpSms(mobile);
+    res.json({ sent: true, registered: !!rider });
   } catch (err) { res.status(500).json({ message: err.message || 'Failed to send OTP' }); }
 };
 

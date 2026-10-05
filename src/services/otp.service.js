@@ -66,9 +66,7 @@ async function sendOtpSms(mobile) {
   const apiKey = process.env.FAST2SMS_API_KEY;
   if (!apiKey) {
     console.log(`[SMS DEBUG] FAST2SMS_API_KEY missing → DEV mode, SMS NOT sent`);
-    // No SMS is going out, so hand the code back to the caller. Only routes
-    // that explicitly opt in should forward it, and only in this dev branch.
-    return { success: true, dev: true, otp };
+    return { success: true, dev: true };
   }
 
   const params = new URLSearchParams({
@@ -100,14 +98,13 @@ async function sendOtpSms(mobile) {
           if (json.return === true) {
             resolve({ success: true });
           } else {
-            // SMS failed (e.g. wallet empty) — fall back to dev mode so OTP shows on screen
             const reason = Array.isArray(json.message) ? json.message[0] : (json.message || 'Fast2SMS error');
-            console.log(`[SMS DEBUG] Fast2SMS failed: ${reason} — returning devOtp`);
-            resolve({ success: true, dev: true, otp });
+            console.log(`[SMS DEBUG] Fast2SMS failed: ${reason}`);
+            resolve({ success: true, dev: true });
           }
         } catch {
-          console.log('[SMS DEBUG] Invalid Fast2SMS response — returning devOtp');
-          resolve({ success: true, dev: true, otp });
+          console.log('[SMS DEBUG] Invalid Fast2SMS response');
+          resolve({ success: true, dev: true });
         }
       });
     });
