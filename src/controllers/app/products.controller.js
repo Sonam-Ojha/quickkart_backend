@@ -76,8 +76,19 @@ const list = async (req, res) => {
       order:  [['created_at', 'DESC']],
     });
 
+    const hasLocation = req.query.lat != null && req.query.lng != null;
     const stockMap = await buildStockMap(rows.map(p => p.id), storeId);
-    return res.json({ products: rows.map(p => formatProduct(p, stockMap, serviceable)), total: count, serviceable: serviceable ?? true });
+    let visible;
+    if (!hasLocation) {
+      visible = rows.map(p => formatProduct(p, stockMap, serviceable));
+    } else if (serviceable === false) {
+      // location given but no store covers it — show all products marked unavailable
+      visible = rows.map(p => formatProduct(p, {}, false));
+    } else {
+      // serviceable — only show products in-store with stock
+      visible = rows.map(p => formatProduct(p, stockMap, serviceable)).filter(p => p.available && p.inStock);
+    }
+    return res.json({ products: visible, total: visible.length, serviceable: serviceable ?? true });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
@@ -115,8 +126,17 @@ const search = async (req, res) => {
       limit: Number(limit),
     });
 
+    const hasLocation = req.query.lat != null && req.query.lng != null;
     const stockMap = await buildStockMap(products.map(p => p.id), storeId);
-    return res.json(products.map(p => formatProduct(p, stockMap, serviceable)));
+    let visible;
+    if (!hasLocation) {
+      visible = products.map(p => formatProduct(p, stockMap, serviceable));
+    } else if (serviceable === false) {
+      visible = products.map(p => formatProduct(p, {}, false));
+    } else {
+      visible = products.map(p => formatProduct(p, stockMap, serviceable)).filter(p => p.available && p.inStock);
+    }
+    return res.json(visible);
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }

@@ -105,8 +105,17 @@ const products = async (req, res) => {
       order: [['created_at', 'DESC']],
     });
 
+    const hasLocation = req.query.lat != null && req.query.lng != null;
     const stockMap = await buildStockMap(rows.map(p => p.id), storeId);
-    return res.json({ category, products: rows.map(p => formatProduct(p, stockMap, serviceable)), total: count });
+    let visible;
+    if (!hasLocation) {
+      visible = rows.map(p => formatProduct(p, stockMap, serviceable));
+    } else if (serviceable === false) {
+      visible = rows.map(p => formatProduct(p, {}, false));
+    } else {
+      visible = rows.map(p => formatProduct(p, stockMap, serviceable)).filter(p => p.available && p.inStock);
+    }
+    return res.json({ category, products: visible, total: visible.length });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
@@ -136,8 +145,17 @@ const allProducts = async (req, res) => {
       order:  [['created_at', 'DESC']],
     });
 
+    const hasLocation = req.query.lat != null && req.query.lng != null;
     const stockMap = await buildStockMap(rows.map(p => p.id), storeId);
-    return res.json({ category, subcategories: children, products: rows.map(p => formatProduct(p, stockMap, serviceable)), total: count });
+    let visible;
+    if (!hasLocation) {
+      visible = rows.map(p => formatProduct(p, stockMap, serviceable));
+    } else if (serviceable === false) {
+      visible = rows.map(p => formatProduct(p, {}, false));
+    } else {
+      visible = rows.map(p => formatProduct(p, stockMap, serviceable)).filter(p => p.available && p.inStock);
+    }
+    return res.json({ category, subcategories: children, products: visible, total: visible.length });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
