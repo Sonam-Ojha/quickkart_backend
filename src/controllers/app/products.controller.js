@@ -1,59 +1,15 @@
 const Product       = require('../../models/product.model');
 const Category      = require('../../models/category.model');
-const Inventory     = require('../../models/inventory.model');
 const ProductStoreVisibility = require('../../models/product-store-visibility.model');
-const { findNearestStore } = require('../../services/darkstore.service');
+const { resolveStorefront, storeCatalog, scopeToStore, formatProduct } = require('../../services/storefront.service');
 const { Op, literal } = require('sequelize');
-
-// Resolve the best store for a given customer location.
-// Returns { storeId, serviceable } where serviceable=false means
-// lat/lng were given but no store covers this area.
-async function resolveStore(lat, lng) {
-  const { store, fallback } = await findNearestStore(lat, lng);
-  if (!store && !fallback) {
-    // lat/lng given but no store in radius → not serviceable
-    return { storeId: null, serviceable: false };
-  }
-  return { storeId: store?.id ?? null, serviceable: true };
-}
-
-// Build a productId → stockQty map for a list of products from the active store.
-async function buildStockMap(productIds, storeId) {
-  if (!storeId || !productIds.length) return {};
-  const rows = await Inventory.findAll({
-    where: { storeId, productId: { [Op.in]: productIds } },
-    attributes: ['productId', 'stockQty'],
-  });
-  const map = {};
-  for (const r of rows) map[r.productId] = r.stockQty;
-  return map;
-}
-
-const formatProduct = (p, stockMap, serviceable) => {
-  const inMap     = stockMap != null && p.id in stockMap;
-  const available = serviceable !== false && inMap;
-  const stock     = inMap ? stockMap[p.id] : 0;
-  const inStock   = available && p.isActive && stock > 0;
-  return {
-    id:            p.id,
-    name:          p.name,
-    weight:        p.unit    ?? '',
-    price:         Math.round(p.price / 100),
-    originalPrice: Math.round(p.mrp   / 100),
-    img:           p.imageUrl ?? '',
-    badge:         p.tag      ?? null,
-    category:      p.category?.name ?? '',
-    available,
-    inStock,
-    stock,
-  };
-};
 
 // GET /api/app/products?tag=deal|bestseller|new&category_name=Fresh&category_id=1&section=fresh&limit=12&offset=0
 const list = async (req, res) => {
   try {
     const { tag, category_id, category_name, section, q, limit = 20, offset = 0 } = req.query;
-    const { storeId, serviceable } = await resolveStore(req.query.lat, req.query.lng);
+    const { storeId, serviceable } = await resolveStorefront(req.query.lat, req.query.lng);
+    const catalog = await storeCatalog(storeId);
 
     const where = { isActive: true };
     if (tag)         where.tag        = tag;
@@ -64,8 +20,8 @@ const list = async (req, res) => {
     if (category_name) includeWhere.name = category_name;
     if (['grocery', 'fresh'].includes(section)) includeWhere.section = section;
 
-    const { rows, count } = await Product.findAndCountAll({
-      where,
+    const rows = await Product.findAll({
+      where: scopeToStore(where, catalog),
       include: [{
         model: Category, as: 'category',
         attributes: ['id', 'name'],
@@ -76,19 +32,8 @@ const list = async (req, res) => {
       order:  [['created_at', 'DESC']],
     });
 
-    const hasLocation = req.query.lat != null && req.query.lng != null;
-    const stockMap = await buildStockMap(rows.map(p => p.id), storeId);
-    let visible;
-    if (!hasLocation) {
-      visible = rows.map(p => formatProduct(p, stockMap, serviceable));
-    } else if (serviceable === false) {
-      // location given but no store covers it — show all products marked unavailable
-      visible = rows.map(p => formatProduct(p, {}, false));
-    } else {
-      // serviceable — only show products in-store with stock
-      visible = rows.map(p => formatProduct(p, stockMap, serviceable)).filter(p => p.available && p.inStock);
-    }
-    return res.json({ products: visible, total: visible.length, serviceable: serviceable ?? true });
+    const visible = rows.map(p => formatProduct(p, catalog));
+    return res.json({ products: visible, total: visible.length, serviceable });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
@@ -97,7 +42,7 @@ const list = async (req, res) => {
 // GET /api/app/products/:id
 const getById = async (req, res) => {
   try {
-    const { storeId, serviceable } = await resolveStore(req.query.lat, req.query.lng);
+    const { storeId } = await resolveStorefront(req.query.lat, req.query.lng);
 
     const product = await Product.findOne({
       where: { id: req.params.id, isActive: true },
@@ -105,8 +50,7 @@ const getById = async (req, res) => {
     });
     if (!product) return res.status(404).json({ message: 'Product not found' });
 
-    const stockMap = await buildStockMap([product.id], storeId);
-    return res.json(formatProduct(product, stockMap, serviceable));
+    return res.json(formatProduct(product, await storeCatalog(storeId)));
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
@@ -118,25 +62,16 @@ const search = async (req, res) => {
     const { q, limit = 20 } = req.query;
     if (!q) return res.json([]);
 
-    const { storeId, serviceable } = await resolveStore(req.query.lat, req.query.lng);
+    const { storeId } = await resolveStorefront(req.query.lat, req.query.lng);
+    const catalog = await storeCatalog(storeId);
 
     const products = await Product.findAll({
-      where: { isActive: true, name: { [Op.like]: `%${q}%` } },
+      where: scopeToStore({ isActive: true, name: { [Op.like]: `%${q}%` } }, catalog),
       include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }],
       limit: Number(limit),
     });
 
-    const hasLocation = req.query.lat != null && req.query.lng != null;
-    const stockMap = await buildStockMap(products.map(p => p.id), storeId);
-    let visible;
-    if (!hasLocation) {
-      visible = products.map(p => formatProduct(p, stockMap, serviceable));
-    } else if (serviceable === false) {
-      visible = products.map(p => formatProduct(p, {}, false));
-    } else {
-      visible = products.map(p => formatProduct(p, stockMap, serviceable)).filter(p => p.available && p.inStock);
-    }
-    return res.json(visible);
+    return res.json(products.map(p => formatProduct(p, catalog)));
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }

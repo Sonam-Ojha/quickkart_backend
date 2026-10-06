@@ -10,6 +10,7 @@ const Address       = require('../../models/address.model');
 const User          = require('../../models/user.model');
 const sequelize     = require('../../../src/config/db');
 const { sendSms }   = require('../../services/otp.service');
+const { storeForDelivery, storeCatalog, NOT_SERVICEABLE } = require('../../services/storefront.service');
 
 const list = async (req, res) => {
   try {
@@ -27,7 +28,7 @@ const list = async (req, res) => {
 const place = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { items, address_id, coupon_code, payment_method = 'cod', delivery_fee: clientFee, handling_charge: clientHandling, discount = 0 } = req.body;
+    const { items, address_id, coupon_code, payment_method = 'cod', delivery_fee: clientFee, handling_charge: clientHandling, discount = 0, lat, lng } = req.body;
 
     if (!items || items.length === 0) {
       return res.status(400).json({ message: 'No items in order' });
@@ -42,8 +43,15 @@ const place = async (req, res) => {
     const handling_charge = clientHandling != null ? Number(clientHandling) : 5;
     const total           = subtotal - Number(discount) + delivery_fee + handling_charge;
 
-    // Auto-pick first active dark store
-    const store = await DarkStore.findOne({ where: { is_active: true } });
+    // Fulfil from the store whose radius covers the delivery location.
+    const { store, located } = await storeForDelivery(lat, lng);
+    if (located && !store) {
+      await t.rollback();
+      return res.status(400).json({ message: NOT_SERVICEABLE });
+    }
+
+    // Products the admin switched OFF for this store can't be ordered from it.
+    const { hidden } = await storeCatalog(store?.id);
 
     // Check + lock inventory for each item (only block if record exists AND qty is insufficient)
     for (const item of items) {
@@ -54,9 +62,13 @@ const place = async (req, res) => {
         lock: t.LOCK.UPDATE,
         transaction: t,
       });
-      // If inventory record exists and stock is less than requested, block
-      if (inv && inv.stockQty < qty) {
-        throw new Error(`Out of stock: product #${productId} (available: ${inv.stockQty}, requested: ${qty})`);
+      // Block products switched off for this store, and tracked stock that's
+      // short. Products with no Inventory row aren't stock-tracked.
+      if (hidden.includes(Number(productId)) || (inv && inv.stockQty < qty)) {
+        const product = await Product.findByPk(productId, { attributes: ['name'] });
+        const err = new Error(`${product?.name ?? `Product #${productId}`} is not available at your nearest store. Please remove it from your cart.`);
+        err.status = 409;
+        throw err;
       }
     }
 
@@ -149,7 +161,7 @@ const place = async (req, res) => {
   } catch (err) {
     await t.rollback();
     console.error('[ORDER ERROR]', err.message, err.errors ?? '');
-    return res.status(500).json({ message: err.message, detail: err.errors?.map(e => e.message) });
+    return res.status(err.status ?? 500).json({ message: err.message, detail: err.errors?.map(e => e.message) });
   }
 };
 

@@ -11,6 +11,7 @@ const User          = require('../../models/user.model');
 const sequelize     = require('../../../src/config/db');
 const { sendSms }   = require('../../services/otp.service');
 const { authenticateCustomer } = require('../../middlewares/customer.middleware');
+const { storeForDelivery, NOT_SERVICEABLE } = require('../../services/storefront.service');
 
 router.use(authenticateCustomer);
 
@@ -18,10 +19,13 @@ router.use(authenticateCustomer);
 // Creates a Razorpay order and returns key + order_id for frontend
 router.post('/razorpay/create', async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { amount, lat, lng } = req.body;
     if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
       return res.status(503).json({ message: 'Online payment not configured. Please use Cash on Delivery.' });
     }
+    // Refuse before the customer pays, not after.
+    const { store, located } = await storeForDelivery(lat, lng);
+    if (located && !store) return res.status(400).json({ message: NOT_SERVICEABLE });
     const rzp = new Razorpay({
       key_id:     process.env.RAZORPAY_KEY_ID,
       key_secret: process.env.RAZORPAY_KEY_SECRET,
@@ -48,7 +52,7 @@ router.post('/razorpay/verify', async (req, res) => {
   try {
     const {
       razorpay_order_id, razorpay_payment_id, razorpay_signature,
-      items, delivery_fee = 0, handling_charge = 5, discount = 0,
+      items, delivery_fee = 0, handling_charge = 5, discount = 0, lat, lng,
     } = req.body;
 
     // Verify signature
@@ -65,7 +69,11 @@ router.post('/razorpay/verify', async (req, res) => {
     for (const item of items) subtotal += (item.price ?? 0) * (item.qty ?? 1);
     const total = subtotal - Number(discount) + Number(delivery_fee) + Number(handling_charge);
 
-    const store = await DarkStore.findOne({ where: { is_active: true } });
+    // Payment is already captured here, so if the location check somehow
+    // fails now (it passed at /create) fall back to any active store rather
+    // than losing a paid order.
+    let { store } = await storeForDelivery(lat, lng);
+    if (!store) store = await DarkStore.findOne({ where: { is_active: true } });
 
     // Check + lock inventory
     for (const item of items) {
@@ -76,7 +84,8 @@ router.post('/razorpay/verify', async (req, res) => {
         lock: t.LOCK.UPDATE,
         transaction: t,
       });
-      if (!inv || inv.stockQty < qty) {
+      // Products with no Inventory row aren't stock-tracked.
+      if (inv && inv.stockQty < qty) {
         throw new Error(`Out of stock: product #${productId} (available: ${inv?.stockQty ?? 0}, requested: ${qty})`);
       }
     }
