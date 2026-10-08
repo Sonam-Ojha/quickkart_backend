@@ -15,17 +15,21 @@ const list = async (req, res) => {
 
 const add = async (req, res) => {
   try {
-    const { name, mobile, storeId, rating, status, password, vehicleType, vehicleNumber } = req.body;
+    const { name, mobile, storeId, rating, status, password, vehicleType, vehicleNumber, serviceLat, serviceLng, serviceRadius } = req.body;
     if (!name || !mobile || !storeId) return res.status(400).json({ message: 'name, mobile, storeId are required' });
     const hashed = password ? await bcrypt.hash(password, 10) : null;
-    const rider  = await svc.create({ name, mobile, storeId, rating, status, vehicleType, vehicleNumber, password: hashed });
+    const rider  = await svc.create({ name, mobile, storeId, rating, status, vehicleType, vehicleNumber, password: hashed, serviceLat, serviceLng, serviceRadius });
     res.status(201).json({ message: 'Rider added', rider });
   } catch (err) { res.status(400).json({ message: err.message }); }
 };
 
 const edit = async (req, res) => {
   try {
-    const rider = await svc.update(req.params.id, req.body);
+    // The edit form always sends `password` — blank means "keep", anything else
+    // must be hashed, never stored as typed.
+    const { password, ...data } = req.body;
+    if (password) data.password = await bcrypt.hash(password, 10);
+    const rider = await svc.update(req.params.id, data);
     res.json({ message: 'Rider updated', rider });
   } catch (err) { res.status(400).json({ message: err.message }); }
 };

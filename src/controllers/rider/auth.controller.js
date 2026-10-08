@@ -59,8 +59,10 @@ const sendOtp = async (req, res) => {
       const blocked = blockedReason(rider);
       if (blocked) return res.status(403).json({ message: blocked });
     }
-    await otpService.sendOtpSms(mobile);
-    res.json({ sent: true, registered: !!rider });
+    const result = await otpService.sendOtpSms(mobile);
+    // No SMS plan yet: when the SMS wasn't actually delivered, hand the code
+    // back so the rider app can show it on screen. Remove once SMS is live.
+    res.json({ sent: true, registered: !!rider, devOtp: result.dev ? result.otp : undefined });
   } catch (err) { res.status(500).json({ message: err.message || 'Failed to send OTP' }); }
 };
 

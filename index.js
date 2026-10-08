@@ -56,6 +56,7 @@ const PORT = process.env.PORT || 4000;
 
 function startServer() {
   const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  require('./src/services/realtime.service').init(server);
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`Port ${PORT} already in use. Run: kill $(lsof -ti:${PORT})`);

@@ -88,8 +88,8 @@ const ORDER_NOTIFICATIONS = {
 
 const notifyOrderStatus = async (order, newStatus) => {
   const builder = ORDER_NOTIFICATIONS[newStatus];
-  if (!builder || !order.userId) return;
-  await sendToUser(order.userId, builder(String(order.id)));
+  if (!builder || !order.customerId) return;
+  await sendToUser(order.customerId, builder(String(order.id)));
 };
 
 const notifyRiderNewOrder = async (riderId, order) => {
@@ -109,7 +109,7 @@ const notifyRiderNewOrder = async (riderId, order) => {
       : `${items.slice(0, MAX_SHOW).join(', ')} (+${items.length - MAX_SHOW} more)`;
 
   await sendToRider(riderId, {
-    title: `🛵 New Order — ₹${Math.round((order.total ?? 0) / 100)}`,
+    title: `🛵 New Order — ₹${Math.round(order.total ?? 0)}`,
     body:  `📍 ${location}\n🛒 ${itemsLine}`,
     data:  { orderId: String(order.id), type: 'new_order', screen: 'OrderOffer' },
   });

@@ -213,6 +213,8 @@ const cancel = async (req, res) => {
       }).catch(() => {});
     }
 
+    require('../../services/realtime.service').orderChanged(order);
+    require('../../services/rider-dispatch.service').withdrawOffers(order.id).catch(() => {});
     return res.json({ message: 'Order cancelled successfully' });
   } catch (err) {
     return res.status(500).json({ message: err.message });

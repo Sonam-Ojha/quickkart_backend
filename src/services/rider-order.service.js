@@ -11,7 +11,8 @@ const Rider             = require('../models/rider.model');
 const RiderNotification = require('../models/rider-notification.model');
 const RiderOrderOffer   = require('../models/rider-order-offer.model');
 const earningsSvc       = require('./rider-earnings.service');
-const { sendToRider }   = require('./notification.service');
+const { sendToRider, notifyOrderStatus } = require('./notification.service');
+const realtime          = require('./realtime.service');
 
 // The rider-side stage machine. `from` is the only stage each action may run
 // in, so a replayed or out-of-order request is rejected instead of skipping a
@@ -64,6 +65,8 @@ const step = async (riderId, orderId, action, note) => {
   if (action === 'confirmPickup') patch.pickedAt = new Date();
   await order.update(patch);
   await OrderTimeline.create({ orderId, status: patch.status ?? order.status, note });
+  realtime.orderChanged(order);
+  if (rule.status) notifyOrderStatus(order, rule.status).catch(() => {});
   return order;
 };
 
@@ -149,6 +152,8 @@ const deliver = async (riderId, orderId, { otp, codCollected = false }) => {
     }).catch(() => {});
   });
 
+  realtime.orderChanged(order);
+  notifyOrderStatus(order, 'delivered').catch(() => {});
   return { orderId: order.id, amount, fee, incentive, tip, codCollected: isCod ? true : order.codCollected };
 };
 
@@ -190,6 +195,7 @@ const cancel = async (riderId, orderId, reason) => {
     );
   });
 
+  realtime.orderChanged(order);
   // Offer it to whoever else is free.
   const dispatch = require('./rider-dispatch.service');
   const result = await dispatch.offerOrder(orderId).catch(() => ({ offered: 0 }));

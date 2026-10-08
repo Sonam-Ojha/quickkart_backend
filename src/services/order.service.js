@@ -84,6 +84,8 @@ const updateStatus = async (id, status, note) => {
   await OrderTimeline.create({ orderId: id, status, note: note || null });
   // Fire-and-forget push notification to customer
   notifyOrderStatus(order, status).catch(() => {});
+  require('./realtime.service').orderChanged(order);
+  if (status === 'cancelled') require('./rider-dispatch.service').withdrawOffers(order.id).catch(() => {});
   return order;
 };
 

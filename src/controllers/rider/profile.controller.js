@@ -3,6 +3,9 @@ const Rider       = require('../../models/rider.model');
 const DarkStore   = require('../../models/darkstore.model');
 const DutySession = require('../../models/rider-duty-session.model');
 const dispatch    = require('../../services/rider-dispatch.service');
+const Order       = require('../../models/order.model');
+const realtime    = require('../../services/realtime.service');
+const { Op }      = require('sequelize');
 
 const getProfile = async (req, res) => {
   try {
@@ -86,6 +89,12 @@ const updateLocation = async (req, res) => {
       { currentLat: lat, currentLng: lng, locationUpdatedAt: new Date() },
       { where: { id: req.rider.id } },
     );
+    // Live map on the customer's tracking screen.
+    const active = await Order.findOne({
+      where: { riderId: req.rider.id, riderStage: ['accepted', 'at_store', 'to_customer', 'at_customer'], status: { [Op.notIn]: ['delivered', 'cancelled'] } },
+      attributes: ['id', 'customerId'],
+    });
+    if (active) realtime.toUser(active.customerId, 'rider:location', { orderId: active.id, lat: Number(lat), lng: Number(lng) });
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };

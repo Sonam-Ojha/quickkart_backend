@@ -28,6 +28,13 @@ const Rider = sequelize.define('Rider', {
   longitude:        { type: DataTypes.DECIMAL(10, 7), allowNull: true },
   lastLocationAt:   { type: DataTypes.DATE, allowNull: true, field: 'last_location_at' },
 
+  // ── Service area (set by admin) ─────────────────────────
+  // The rider is offered an order only when the order's store sits inside this
+  // circle. Unset → falls back to orders from the rider's own store.
+  serviceLat:       { type: DataTypes.DECIMAL(10, 7), allowNull: true, field: 'service_lat' },
+  serviceLng:       { type: DataTypes.DECIMAL(10, 7), allowNull: true, field: 'service_lng' },
+  serviceRadius:    { type: DataTypes.DECIMAL(6, 2), allowNull: false, defaultValue: 5.00, field: 'service_radius' }, // km
+
   // ── KYC roll-up (per-document rows live in rider_documents) ─
   kycAadhaarStatus: { type: DataTypes.ENUM('not_uploaded','uploaded','verified','rejected'), defaultValue: 'not_uploaded', field: 'kyc_aadhaar_status' },
   kycPanStatus:     { type: DataTypes.ENUM('not_uploaded','uploaded','verified','rejected'), defaultValue: 'not_uploaded', field: 'kyc_pan_status' },

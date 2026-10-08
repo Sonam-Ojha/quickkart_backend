@@ -1,6 +1,7 @@
 const { Op }          = require('sequelize');
 const sequelize       = require('../config/db');
 const { notifyRiderNewOrder } = require('./notification.service');
+const realtime        = require('./realtime.service');
 const Order           = require('../models/order.model');
 const OrderItem       = require('../models/order-item.model');
 const OrderTimeline   = require('../models/order-timeline.model');
@@ -11,6 +12,7 @@ const DarkStore       = require('../models/darkstore.model');
 const Address         = require('../models/address.model');
 const Rider           = require('../models/rider.model');
 const RiderOrderOffer = require('../models/rider-order-offer.model');
+const { haversineKm } = require('./darkstore.service');
 
 // How long an incoming-order card stays live before it lapses. The app renders
 // this as the countdown ring, so changing it here changes it there too.
@@ -44,13 +46,29 @@ const expireStale = async (riderId = null) => {
   await RiderOrderOffer.update({ state: 'expired', respondedAt: new Date() }, { where });
 };
 
-// Fan an order out to ALL free active online riders (not store-filtered).
+const hasCoord = (v) => v != null && v !== '' && Number.isFinite(Number(v));
+
+// Does this rider take orders from this store?
+//   - Rider has a service area → the store must sit inside that circle
+//   - No service area set yet  → only orders from the rider's own store
+//   - Store has no lat/lng     → only its own riders (distance is unknowable)
+const servesStore = (rider, store) => {
+  const riderHasArea = hasCoord(rider.serviceLat) && hasCoord(rider.serviceLng);
+  const storeHasCoord = store && hasCoord(store.lat) && hasCoord(store.lng);
+  if (!riderHasArea || !storeHasCoord) return Boolean(store) && rider.storeId === store.id;
+  const km = haversineKm(Number(store.lat), Number(store.lng), Number(rider.serviceLat), Number(rider.serviceLng));
+  return km <= Number(rider.serviceRadius);
+};
+
+// Fan an order out to every free active online rider whose service area
+// covers the order's store (see servesStore).
 // Idempotent: re-running tops up new riders rather than duplicating rows.
 const offerOrder = async (orderId) => {
   // Load order with address + items so notification body can be rich.
   const order = await Order.findByPk(orderId, {
     include: [
       { model: Address,   as: 'address',  attributes: ['line1', 'line2', 'city'] },
+      { model: DarkStore, as: 'store',    attributes: ['id', 'lat', 'lng'] },
       { model: OrderItem, as: 'items',
         include: [{ model: Product, as: 'product', attributes: ['name'] }] },
     ],
@@ -58,16 +76,24 @@ const offerOrder = async (orderId) => {
   if (!order) throw new Error('Order not found');
   if (order.riderId) return { offered: 0, reason: 'already assigned' };
 
-  // All active online riders — not restricted to one store.
-  const riders = await Rider.findAll({
+  // Active online riders whose service area covers this order's store.
+  const online = await Rider.findAll({
     where: { status: 'active', isOnline: true },
-    attributes: ['id'],
+    attributes: ['id', 'storeId', 'serviceLat', 'serviceLng', 'serviceRadius'],
   });
-  if (!riders.length) return { offered: 0, reason: 'no online riders available' };
+  if (!online.length) return { offered: 0, reason: 'no online riders available' };
+  const riders = online.filter(r => servesStore(r, order.store));
+  if (!riders.length) return { offered: 0, reason: 'no online rider covers this store' };
 
-  // Skip riders already on a live delivery.
+  // Skip riders already on a live delivery. Orders closed from outside the
+  // rider flow (admin marked delivered / cancelled) can keep a stale
+  // riderStage, so the order status has to be live too.
   const busy = await Order.findAll({
-    where: { riderId: riders.map(r => r.id), riderStage: { [Op.in]: ['accepted','at_store','to_customer','at_customer'] } },
+    where: {
+      riderId: riders.map(r => r.id),
+      riderStage: { [Op.in]: ['accepted','at_store','to_customer','at_customer'] },
+      status: { [Op.notIn]: ['delivered', 'cancelled'] },
+    },
     attributes: ['riderId'],
   });
   const busyIds = new Set(busy.map(o => o.riderId));
@@ -90,8 +116,11 @@ const offerOrder = async (orderId) => {
   await Rider.increment('offeredCount', { where: { id: eligible.map(r => r.id) } });
   await order.update({ riderStage: 'offered', assignedAt: new Date(), ...computePayout(order) });
 
-  // Notify every eligible rider with rich location + items info.
-  eligible.forEach(r => notifyRiderNewOrder(r.id, order).catch(() => {}));
+  // Live card for riders with the app open; push for everyone else.
+  eligible.forEach(r => {
+    realtime.toRider(r.id, 'offer:new', { orderId: order.id });
+    notifyRiderNewOrder(r.id, order).catch(() => {});
+  });
 
   return { offered: eligible.length, expiresAt };
 };
@@ -109,7 +138,8 @@ const listPending = async (riderId) => {
 // inside the transaction is what stops two riders taking the same order.
 const accept = async (riderId, orderId) => {
   await expireStale(riderId);
-  return sequelize.transaction(async (t) => {
+  let losers = [];
+  const accepted = await sequelize.transaction(async (t) => {
     const offer = await RiderOrderOffer.findOne({
       where: { riderId, orderId, state: 'pending' },
       lock: t.LOCK.UPDATE, transaction: t,
@@ -119,10 +149,15 @@ const accept = async (riderId, orderId) => {
     const order = await Order.findByPk(orderId, { lock: t.LOCK.UPDATE, transaction: t });
     if (!order) throw Object.assign(new Error('Order not found'), { status: 404 });
     if (order.riderId) throw Object.assign(new Error('Another rider already took this order'), { status: 409 });
+    if (order.status === 'cancelled') throw Object.assign(new Error('This order was cancelled'), { status: 409 });
 
     await order.update({ riderId, riderStage: 'accepted', acceptedAt: new Date() }, { transaction: t });
     await offer.update({ state: 'accepted', respondedAt: new Date() }, { transaction: t });
     // Everyone else loses the race.
+    losers = (await RiderOrderOffer.findAll({
+      where: { orderId, state: 'pending', riderId: { [Op.ne]: riderId } },
+      attributes: ['riderId'], transaction: t,
+    })).map(o => o.riderId);
     await RiderOrderOffer.update(
       { state: 'lost', respondedAt: new Date() },
       { where: { orderId, state: 'pending' }, transaction: t },
@@ -134,6 +169,22 @@ const accept = async (riderId, orderId) => {
     );
     return order;
   });
+  // After commit: pull the card off everyone else's screen, tell the customer.
+  losers.forEach(id => realtime.toRider(id, 'offer:gone', { orderId: accepted.id }));
+  realtime.orderChanged(accepted);
+  return accepted;
+};
+
+// Order cancelled while offers were still out — retire them so nobody can
+// accept a dead order, and pull the card off riders' screens.
+const withdrawOffers = async (orderId) => {
+  const live = await RiderOrderOffer.findAll({ where: { orderId, state: 'pending' }, attributes: ['riderId'] });
+  if (!live.length) return;
+  await RiderOrderOffer.update(
+    { state: 'expired', respondedAt: new Date() },
+    { where: { orderId, state: 'pending' } },
+  );
+  live.forEach(o => realtime.toRider(o.riderId, 'offer:gone', { orderId: Number(orderId) }));
 };
 
 const reject = async (riderId, orderId) => {
@@ -206,4 +257,4 @@ const startSweeper = () => {
 };
 const stopSweeper = () => { if (_timer) { clearInterval(_timer); _timer = null; } };
 
-module.exports = { OFFER_TTL_SEC, computePayout, offerOrder, listPending, accept, reject, expireStale, dropPendingFor, sweep, startSweeper, stopSweeper };
+module.exports = { OFFER_TTL_SEC, computePayout, servesStore, offerOrder, withdrawOffers, listPending, accept, reject, expireStale, dropPendingFor, sweep, startSweeper, stopSweeper };

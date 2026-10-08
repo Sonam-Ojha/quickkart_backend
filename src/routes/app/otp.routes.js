@@ -23,7 +23,9 @@ router.post('/send', async (req, res) => {
       console.log(`[OTP ROUTE] Sending OTP via SMS to ${mobile}`);
       const result = await otpService.sendOtpSms(mobile);
       console.log(`[OTP ROUTE] SMS result:`, result);
-      return res.json({ success: true, channel: 'sms' });
+      // No SMS plan yet: when the SMS wasn't actually delivered, hand the code
+      // back so the customer app can show it on screen. Remove once SMS is live.
+      return res.json({ success: true, channel: 'sms', devOtp: result.dev ? result.otp : undefined });
     }
 
     console.log(`[OTP ROUTE] ❌ No email or mobile in body`);

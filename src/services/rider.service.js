@@ -24,14 +24,24 @@ const getById = async (id) => {
   return rider;
 };
 
-const create = async ({ name, mobile, storeId, rating, status }) => {
-  return Rider.create({ name, mobile, storeId, rating, status });
+// Admin forms send '' for a cleared lat/lng box — store that as "no area set".
+const normalizeArea = (data) => {
+  const out = { ...data };
+  for (const k of ['serviceLat', 'serviceLng']) {
+    if (k in out && (out[k] === '' || out[k] == null)) out[k] = null;
+  }
+  if ('serviceRadius' in out && (out.serviceRadius === '' || out.serviceRadius == null)) delete out.serviceRadius;
+  return out;
+};
+
+const create = async ({ name, mobile, storeId, rating, status, vehicleType, vehicleNumber, password, serviceLat, serviceLng, serviceRadius }) => {
+  return Rider.create(normalizeArea({ name, mobile, storeId, rating, status, vehicleType, vehicleNumber, password, serviceLat, serviceLng, serviceRadius }));
 };
 
 const update = async (id, data) => {
   const rider = await Rider.findByPk(id);
   if (!rider) throw new Error('Rider not found');
-  await rider.update(data);
+  await rider.update(normalizeArea(data));
   return rider;
 };
 
