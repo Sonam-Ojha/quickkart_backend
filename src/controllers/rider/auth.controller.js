@@ -1,8 +1,9 @@
-const jwt        = require('jsonwebtoken');
-const bcrypt     = require('bcryptjs');
-const Rider      = require('../../models/rider.model');
-const DarkStore  = require('../../models/darkstore.model');
-const otpService = require('../../services/otp.service');
+const jwt              = require('jsonwebtoken');
+const bcrypt           = require('bcryptjs');
+const Rider            = require('../../models/rider.model');
+const DarkStore        = require('../../models/darkstore.model');
+const otpService       = require('../../services/otp.service');
+const AccountDeletion  = require('../../models/account-deletion.model');
 
 const SECRET = process.env.JWT_SECRET || 'my-secret-key';
 
@@ -71,7 +72,7 @@ const verifyOtp = async (req, res) => {
     const { mobile, otp } = req.body;
     if (!mobile || !otp) return res.status(400).json({ message: 'mobile and otp are required' });
 
-    const check = otpService.verifyOtp(mobile, otp);
+    const check = await otpService.verifyOtp(mobile, otp);
     if (!check.valid) return res.status(400).json({ message: check.reason });
 
     const rider = await Rider.findOne({ where: { mobile }, ...WITH_STORE });
@@ -157,4 +158,29 @@ const login = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-module.exports = { sendOtp, verifyOtp, register, me, stores, login };
+const deleteAccount = async (req, res) => {
+  try {
+    const { otp, reason } = req.body;
+    if (!otp) return res.status(400).json({ message: 'OTP is required' });
+
+    const rider = await Rider.findByPk(req.rider.id);
+    if (!rider) return res.status(404).json({ message: 'Rider not found' });
+
+    const check = await otpService.verifyOtp(rider.mobile, otp);
+    if (!check.valid) return res.status(400).json({ message: check.reason });
+
+    await AccountDeletion.create({
+      userId: rider.id,
+      userType: 'rider',
+      mobile: rider.mobile,
+      name: rider.name,
+      reason: reason || null,
+    });
+    await rider.update({ status: 'inactive' });
+    return res.json({ message: 'Account deleted successfully' });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { sendOtp, verifyOtp, register, me, stores, login, deleteAccount };

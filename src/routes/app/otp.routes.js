@@ -38,13 +38,13 @@ router.post('/send', async (req, res) => {
 
 // POST /api/app/otp/verify
 // Body: { key: "user@gmail.com or 9876543210", otp: "123456" }
-router.post('/verify', (req, res) => {
+router.post('/verify', async (req, res) => {
   const { email, mobile, otp } = req.body;
   const key = email || mobile;
   if (!key || !otp) {
     return res.status(400).json({ message: 'email/mobile and otp are required' });
   }
-  const result = otpService.verifyOtp(key, otp);
+  const result = await otpService.verifyOtp(key, otp);
   if (!result.valid) {
     return res.status(400).json({ message: result.reason });
   }

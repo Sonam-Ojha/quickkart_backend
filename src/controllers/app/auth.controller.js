@@ -1,7 +1,9 @@
-const bcrypt  = require('bcryptjs');
-const jwt     = require('jsonwebtoken');
-const { Op }  = require('sequelize');
-const User    = require('../../models/user.model');
+const bcrypt           = require('bcryptjs');
+const jwt              = require('jsonwebtoken');
+const { Op }           = require('sequelize');
+const User             = require('../../models/user.model');
+const AccountDeletion  = require('../../models/account-deletion.model');
+const otpService       = require('../../services/otp.service');
 
 const signToken = (user) =>
   jwt.sign(
@@ -95,7 +97,6 @@ const refresh = async (req, res) => {
 };
 
 // OTP Login — verify OTP then return token (find or create user)
-const otpService = require('../../services/otp.service');
 
 const otpLogin = async (req, res) => {
   try {
@@ -106,7 +107,7 @@ const otpLogin = async (req, res) => {
     }
 
     // Verify OTP
-    const result = otpService.verifyOtp(key, otp);
+    const result = await otpService.verifyOtp(key, otp);
     if (!result.valid) {
       return res.status(400).json({ message: result.reason });
     }
@@ -121,7 +122,7 @@ const otpLogin = async (req, res) => {
       const randomPass = await bcrypt.hash(Math.random().toString(36), 10);
       const createData = {
         name:     mobile ? `User ${mobile.slice(-4)}` : (email.split('@')[0] || 'User'),
-        email:    email  || `m${mobile}@noemail.jhatpats.com`,
+        email:    email  || null,
         password: randomPass,
         role:     'user',
       };
@@ -152,4 +153,30 @@ const otpLogin = async (req, res) => {
   }
 };
 
-module.exports = { register, login, refresh, otpLogin };
+const deleteAccount = async (req, res) => {
+  try {
+    const { otp, reason } = req.body;
+    if (!otp) return res.status(400).json({ message: 'OTP is required' });
+
+    const user = await User.findByPk(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const key = user.mobile || user.email;
+    const check = await otpService.verifyOtp(key, otp);
+    if (!check.valid) return res.status(400).json({ message: check.reason });
+
+    await AccountDeletion.create({
+      userId: user.id,
+      userType: 'customer',
+      mobile: user.mobile,
+      name: user.name,
+      reason: reason || null,
+    });
+    await user.update({ isActive: false });
+    return res.json({ message: 'Account deleted successfully' });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { register, login, refresh, otpLogin, deleteAccount };

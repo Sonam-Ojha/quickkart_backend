@@ -1,12 +1,18 @@
 const https        = require('https');
 const nodemailer   = require('nodemailer');
+const Otp          = require('../models/otp.model');
+const { Op }       = require('sequelize');
 
-// In-memory OTP store: { key: { otp, expiresAt } }
-const _store = new Map();
 const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 
 function _generateOtp() {
   return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+async function _saveOtp(key, otp) {
+  // Delete any existing OTP for this key first
+  await Otp.destroy({ where: { key } });
+  await Otp.create({ key, otp, expiresAt: new Date(Date.now() + OTP_EXPIRY_MS) });
 }
 
 // ── Nodemailer transporter (Hostinger SMTP) ───────────────────────────────────
@@ -25,7 +31,7 @@ function _getTransporter() {
 // ── Send OTP via Email ────────────────────────────────────────────────────────
 async function sendOtpEmail(email) {
   const otp = _generateOtp();
-  _store.set(email, { otp, expiresAt: Date.now() + OTP_EXPIRY_MS });
+  await _saveOtp(email, otp);
 
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
     console.log(`[OTP DEV] email=${email} otp=${otp}`);
@@ -59,7 +65,7 @@ async function sendOtpEmail(email) {
 // ── Send OTP via Fast2SMS (no DLT required) ──────────────────────────────────
 async function sendOtpSms(mobile) {
   const otp = _generateOtp();
-  _store.set(mobile, { otp, expiresAt: Date.now() + OTP_EXPIRY_MS });
+  await _saveOtp(mobile, otp);
 
   console.log(`\n[SMS DEBUG] mobile = ${mobile} | otp = ${otp}`);
 
@@ -122,15 +128,15 @@ async function sendOtpSms(mobile) {
 }
 
 // ── Verify OTP (works for both email and mobile) ──────────────────────────────
-function verifyOtp(key, otp) {
-  const entry = _store.get(key);
+async function verifyOtp(key, otp) {
+  const entry = await Otp.findOne({ where: { key } });
   if (!entry) return { valid: false, reason: 'OTP not sent or expired' };
-  if (Date.now() > entry.expiresAt) {
-    _store.delete(key);
+  if (new Date() > entry.expiresAt) {
+    await entry.destroy();
     return { valid: false, reason: 'OTP expired' };
   }
   if (entry.otp !== String(otp)) return { valid: false, reason: 'Invalid OTP' };
-  _store.delete(key);
+  await entry.destroy();
   return { valid: true };
 }
 

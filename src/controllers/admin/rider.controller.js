@@ -4,6 +4,16 @@ const Rider  = require('../../models/rider.model');
 const RiderDocument = require('../../models/rider-document.model');
 const { KYC_FIELD } = require('../rider/documents.controller');
 const { sendToRider } = require('../../services/notification.service');
+const otpService = require('../../services/otp.service');
+
+const DOC_LABELS = {
+  aadhaar:    'Aadhaar Card',
+  pan:        'PAN Card',
+  license:    'Driving License',
+  rc:         'RC (Vehicle Registration)',
+  bank_proof: 'Bank Proof',
+  photo:      'Profile Photo',
+};
 
 const list = async (req, res) => {
   try {
@@ -103,22 +113,30 @@ const reviewDocument = async (req, res) => {
       activated = true;
     }
 
-    // FCM to rider for KYC result
+    // FCM + SMS to rider for KYC result
+    const docLabel = DOC_LABELS[doc.docType] || doc.docType.replace('_', ' ');
     if (status === 'verified') {
-      const label = doc.docType.replace('_', ' ');
       sendToRider(rider.id, {
         title: activated ? '🎉 Account Activated!' : `✅ Document Verified`,
         body:  activated
           ? 'All documents verified. You can now go online and start delivering!'
-          : `Your ${label} has been verified.`,
+          : `Your ${docLabel} has been verified.`,
         data:  { type: 'kyc', screen: 'Documents' },
       }).catch(() => {});
+
+      const smsText = activated
+        ? `Jhatpats: Congrats ${rider.name}! All your KYC documents are verified. Your account is now active. You can go online and start delivering!`
+        : `Jhatpats: Your ${docLabel} has been verified. Login to the Jhatpats Rider app to check your KYC status.`;
+      otpService.sendSms(rider.mobile, smsText).catch(() => {});
     } else if (status === 'rejected') {
       sendToRider(rider.id, {
         title: '❌ Document Rejected',
-        body:  `Your ${doc.docType.replace('_', ' ')} was rejected. ${rejectionReason || 'Please re-upload.'}`,
+        body:  `Your ${docLabel} was rejected. ${rejectionReason || 'Please re-upload.'}`,
         data:  { type: 'kyc', screen: 'Documents' },
       }).catch(() => {});
+
+      const smsText = `Jhatpats: Your ${docLabel} was rejected. Reason: ${rejectionReason || 'Document unclear or invalid'}. Please re-upload in the Jhatpats Rider app.`;
+      otpService.sendSms(rider.mobile, smsText).catch(() => {});
     }
 
     res.json({ message: `Document ${status}`, document: doc, riderStatus: rider.status, activated });

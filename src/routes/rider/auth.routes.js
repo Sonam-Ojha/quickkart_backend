@@ -13,6 +13,7 @@ router.get('/stores',      ctrl.stores);     // store picker during registration
 router.post('/register', authenticateSignup, ctrl.register);
 
 // Rider token
-router.get('/me', authenticateRider, ctrl.me);
+router.get('/me',             authenticateRider, ctrl.me);
+router.delete('/account',     authenticateRider, ctrl.deleteAccount);
 
 module.exports = router;
