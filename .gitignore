@@ -39,3 +39,6 @@ coverage/
 
 # Firebase service account — contains private key, never commit
 serviceAccountKey.json
+
+# Admin product photos + rider KYC documents — runtime data, never commit
+public/uploads/

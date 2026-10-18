@@ -23,8 +23,10 @@ const updateProfile = async (req, res) => {
     const rider = await Rider.findByPk(req.rider.id);
     if (!rider) return res.status(404).json({ message: 'Rider not found' });
 
-    const { name, vehicleType, vehicleNumber } = req.body;
-    await rider.update({ name, vehicleType, vehicleNumber });
+    const { name, vehicleType, vehicleNumber, languageCode } = req.body;
+    const changes = { name, vehicleType, vehicleNumber };
+    if (['en', 'hi'].includes(languageCode)) changes.languageCode = languageCode;
+    await rider.update(changes);
     res.json({ message: 'Profile updated', rider: { id: rider.id, name: rider.name, vehicleType: rider.vehicleType, vehicleNumber: rider.vehicleNumber } });
   } catch (err) { res.status(400).json({ message: err.message }); }
 };

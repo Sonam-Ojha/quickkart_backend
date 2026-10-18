@@ -132,14 +132,26 @@ const getAllProducts = async ({ categoryId, search, activeOnly, page = 1, limit 
   return { total: count, page: Number(page), limit: Number(limit), products: rows };
 };
 
-const createProduct = async ({ name, categoryId, brand, unit, mrp, price, imageUrl, tag, isActive }) => {
-  return Product.create({ name, categoryId, brand, unit, mrp, price, imageUrl, tag: tag || null, isActive });
+// Admin sends the whole gallery as `images`; keep it clean (non-empty, unique,
+// at most MAX_IMAGES) and make imageUrl follow the first one — that's the
+// cover every list and card already reads.
+const MAX_IMAGES = 8;
+const withGallery = (data) => {
+  if (!('images' in data)) return data;
+  const images = [...new Set((Array.isArray(data.images) ? data.images : [])
+    .map(u => String(u || '').trim()).filter(Boolean))].slice(0, MAX_IMAGES);
+  return { ...data, images, imageUrl: images[0] ?? null };
+};
+
+const createProduct = async ({ name, categoryId, brand, unit, mrp, price, imageUrl, images, tag, isActive }) => {
+  const gallery = withGallery(images !== undefined ? { images } : { images: imageUrl ? [imageUrl] : [] });
+  return Product.create({ name, categoryId, brand, unit, mrp, price, ...gallery, tag: tag || null, isActive });
 };
 
 const updateProduct = async (id, data) => {
   const product = await Product.findByPk(id);
   if (!product) throw new Error('Product not found');
-  await product.update(data);
+  await product.update(withGallery(data));
   return product;
 };
 

@@ -95,11 +95,11 @@ const listProducts = async (req, res) => {
 
 const addProduct = async (req, res) => {
   try {
-    const { name, categoryId, brand, unit, mrp, price, imageUrl, isActive } = req.body;
+    const { name, categoryId, brand, unit, mrp, price, imageUrl, images, isActive } = req.body;
     if (!name || !categoryId || !mrp || !price) {
       return res.status(400).json({ message: 'name, categoryId, mrp, price are required' });
     }
-    const product = await svc.createProduct({ name, categoryId, brand, unit, mrp, price, imageUrl, isActive });
+    const product = await svc.createProduct({ name, categoryId, brand, unit, mrp, price, imageUrl, images, isActive });
     res.status(201).json({ message: 'Product created', product });
   } catch (err) {
     res.status(400).json({ message: err.message });

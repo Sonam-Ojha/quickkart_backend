@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const svc    = require('../../services/rider.service');
+const s3     = require('../../services/s3.service');
 const Rider  = require('../../models/rider.model');
 const RiderDocument = require('../../models/rider-document.model');
 const { KYC_FIELD } = require('../rider/documents.controller');
@@ -80,7 +81,13 @@ const setPassword = async (req, res) => {
 // ── KYC review ──────────────────────────────────────────────
 const listDocuments = async (req, res) => {
   try {
-    const documents = await RiderDocument.findAll({ where: { riderId: req.params.id }, order: [['doc_type', 'ASC']] });
+    const rows = await RiderDocument.findAll({ where: { riderId: req.params.id }, order: [['doc_type', 'ASC']] });
+    // KYC files sit in a private bucket — hand the admin a 10-minute signed
+    // link to view them; fileUrl stays the permanent reference.
+    const documents = await Promise.all(rows.map(async (d) => ({
+      ...d.toJSON(),
+      viewUrl: await s3.signedUrl(d.fileUrl).catch(() => d.fileUrl),
+    })));
     res.json({ documents });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };

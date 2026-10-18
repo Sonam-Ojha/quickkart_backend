@@ -53,6 +53,8 @@ const formatProduct = (p, catalog) => {
     price:         Math.round(p.price / 100),
     originalPrice: Math.round(p.mrp   / 100),
     img:           p.imageUrl ?? '',
+    // Swipeable gallery on the product page; falls back to the single cover.
+    images:        (p.images?.length ? p.images : (p.imageUrl ? [p.imageUrl] : [])),
     badge:         p.tag      ?? null,
     category:      p.category?.name ?? '',
     available,
