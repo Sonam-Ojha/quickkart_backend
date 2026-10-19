@@ -1,4 +1,5 @@
 const Address = require('../../models/address.model');
+const User    = require('../../models/user.model');
 
 const list = async (req, res) => {
   try {
@@ -14,6 +15,9 @@ const list = async (req, res) => {
 
 const create = async (req, res) => {
   try {
+    const userExists = await User.findByPk(req.user.id);
+    if (!userExists) return res.status(401).json({ message: 'User not found. Please log out and log in again.' });
+
     const { label, line1, line2, city, state, pincode, lat, lng, phone, is_default } = req.body;
     const address = await Address.create({
       userId: req.user.id,
