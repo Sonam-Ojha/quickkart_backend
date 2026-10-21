@@ -31,9 +31,12 @@ const sendToToken = async (token, { title, body, data = {} }) => {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const sendToUser = async (userId, payload) => {
+  console.log(`[FCM] sendToUser → userId=${userId} fcmReady=${fcmReady()}`);
   const user = await User.findByPk(userId, { attributes: ['id', 'fcm_token'] });
+  console.log(`[FCM] user fcm_token=${user?.fcm_token ? 'SET' : 'NULL'}`);
   if (!user?.fcm_token) return;
   const res = await sendToToken(user.fcm_token, payload);
+  console.log(`[FCM] sendToToken result=`, res);
   if (res?.stale) await User.update({ fcm_token: null }, { where: { id: userId } });
 };
 

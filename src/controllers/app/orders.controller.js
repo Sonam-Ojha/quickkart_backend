@@ -53,6 +53,16 @@ const place = async (req, res) => {
     // Products the admin switched OFF for this store can't be ordered from it.
     const { hidden } = await storeCatalog(store?.id);
 
+    // Validate all product IDs exist before touching inventory
+    for (const item of items) {
+      const productId = item.product_id ?? item.id;
+      const exists = await Product.findByPk(productId, { attributes: ['id'], transaction: t });
+      if (!exists) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Some items in your cart are no longer available. Please clear your cart and add items again.' });
+      }
+    }
+
     // Check + lock inventory for each item (only block if record exists AND qty is insufficient)
     for (const item of items) {
       const productId = item.product_id ?? item.id;
