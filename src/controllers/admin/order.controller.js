@@ -6,7 +6,7 @@ const dispatch        = require('../../services/rider-dispatch.service');
 const { notifyRiderNewOrder } = require('../../services/notification.service');
 
 const stats = async (req, res) => {
-  try { res.json(await svc.getStats()); }
+  try { res.json(await svc.getStats(req.query)); }
   catch (err) { res.status(500).json({ message: err.message }); }
 };
 

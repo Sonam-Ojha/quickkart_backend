@@ -7,17 +7,19 @@ const User          = require('../models/user.model');
 const DarkStore     = require('../models/darkstore.model');
 const Rider         = require('../models/rider.model');
 const Product       = require('../models/product.model');
+const Address       = require('../models/address.model');
 
 const CUSTOMER_ATTRS = ['id', 'name', 'email', 'mobile'];
 const STORE_ATTRS    = ['id', 'name', 'city'];
 const RIDER_ATTRS    = ['id', 'name', 'mobile', 'rating'];
 const PRODUCT_ATTRS  = ['id', 'name', 'imageUrl'];
 
-const list = async ({ status, search, page = 1, limit = 15 } = {}) => {
+const list = async ({ status, type, search, page = 1, limit = 15 } = {}) => {
   page  = parseInt(page)  || 1;
   limit = parseInt(limit) || 15;
   const where = {};
   if (status && status !== 'all') where.status = status;
+  if (type === 'print' || type === 'grocery') where.orderType = type;
 
   const offset = (page - 1) * limit;
 
@@ -59,6 +61,7 @@ const getById = async (id) => {
         include: [{ model: Product, as: 'product', attributes: PRODUCT_ATTRS }],
       },
       { model: OrderTimeline, as: 'timeline', order: [['created_at', 'ASC']] },
+      { model: Address, as: 'address', attributes: ['id', 'label', 'line1', 'line2', 'city', 'pincode', 'lat', 'lng'], required: false },
     ],
   });
   if (!order) throw new Error('Order not found');
@@ -89,16 +92,17 @@ const updateStatus = async (id, status, note) => {
   return order;
 };
 
-const getStats = async () => {
+const getStats = async ({ type } = {}) => {
   const sequelize = require('../config/db');
+  const T = type === 'print' || type === 'grocery' ? { orderType: type } : {};
   const [total, pending, active, delivered, cancelled] = await Promise.all([
-    Order.count(),
-    Order.count({ where: { status: 'pending' } }),
-    Order.count({ where: { status: { [Op.in]: ['confirmed','preparing','out_for_delivery'] } } }),
-    Order.count({ where: { status: 'delivered' } }),
-    Order.count({ where: { status: 'cancelled' } }),
+    Order.count({ where: T }),
+    Order.count({ where: { ...T, status: 'pending' } }),
+    Order.count({ where: { ...T, status: { [Op.in]: ['confirmed','preparing','out_for_delivery'] } } }),
+    Order.count({ where: { ...T, status: 'delivered' } }),
+    Order.count({ where: { ...T, status: 'cancelled' } }),
   ]);
-  const revenue = await Order.sum('total', { where: { status: 'delivered' } });
+  const revenue = await Order.sum('total', { where: { ...T, status: 'delivered' } });
   return { total, pending, active, delivered, cancelled, revenue: revenue || 0 };
 };
 

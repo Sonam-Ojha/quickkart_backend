@@ -8,6 +8,7 @@ const Payment       = require('../../models/payment.model');
 const DarkStore     = require('../../models/darkstore.model');
 const Inventory     = require('../../models/inventory.model');
 const User          = require('../../models/user.model');
+const Address       = require('../../models/address.model');
 const sequelize     = require('../../../src/config/db');
 const { sendSms }   = require('../../services/otp.service');
 const { authenticateCustomer } = require('../../middlewares/customer.middleware');
@@ -52,7 +53,7 @@ router.post('/razorpay/verify', async (req, res) => {
   try {
     const {
       razorpay_order_id, razorpay_payment_id, razorpay_signature,
-      items, delivery_fee = 0, handling_charge = 5, discount = 0, lat, lng,
+      items, delivery_fee = 0, handling_charge = 5, discount = 0, lat, lng, address_id,
     } = req.body;
 
     // Verify signature
@@ -90,9 +91,20 @@ router.post('/razorpay/verify', async (req, res) => {
       }
     }
 
+    // Only the customer's own saved address can be attached to the order.
+    const address = address_id != null
+      ? await Address.findOne({ where: { id: address_id, userId: req.user.id }, attributes: ['id'], transaction: t })
+      : null;
+
+    // Same handover code as COD orders — without it the rider can't close
+    // the delivery.
+    const deliveryOtp = String(Math.floor(100000 + Math.random() * 900000));
+
     const order = await Order.create({
       customerId:  req.user.id,
       storeId:     store?.id ?? null,
+      addressId:   address?.id ?? null,
+      deliveryOtp,
       status:      'confirmed',
       subtotal,
       deliveryFee: Number(delivery_fee),
@@ -140,9 +152,14 @@ router.post('/razorpay/verify', async (req, res) => {
     const customer = await User.findByPk(req.user.id, { attributes: ['mobile', 'name'] });
     if (customer?.mobile) {
       sendSms(customer.mobile,
-        `Hi ${customer.name || 'there'}! Your Jhatpats order #${order.id} is confirmed. Total: Rs.${total}. Paid via Razorpay. We will deliver soon!`
+        `Hi ${customer.name || 'there'}! Your Jhatpats order #${order.id} is confirmed. Total: Rs.${total}. Paid via Razorpay. Delivery OTP: ${deliveryOtp}. Share it only with your rider.`
       ).catch(() => {});
     }
+
+    // Fan out to riders, same as COD orders. Best-effort: the sweeper retries.
+    require('../../services/rider-dispatch.service')
+      .offerOrder(order.id)
+      .catch(err => console.error('[dispatch] on razorpay placement:', err.message));
 
     return res.status(201).json({ ...order.toJSON(), payment_id: razorpay_payment_id });
   } catch (err) {

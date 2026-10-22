@@ -43,6 +43,15 @@ const place = async (req, res) => {
     const handling_charge = clientHandling != null ? Number(clientHandling) : 5;
     const total           = subtotal - Number(discount) + delivery_fee + handling_charge;
 
+    // Only the customer's own saved address can be attached to the order.
+    if (address_id != null) {
+      const owned = await Address.findOne({ where: { id: address_id, userId: req.user.id }, attributes: ['id'], transaction: t });
+      if (!owned) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Delivery address not found' });
+      }
+    }
+
     // Fulfil from the store whose radius covers the delivery location.
     const { store, located } = await storeForDelivery(lat, lng);
     if (located && !store) {

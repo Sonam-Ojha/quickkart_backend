@@ -1,64 +1,39 @@
-const router      = require('express').Router();
-const { authenticate }  = require('../../middlewares/auth.middleware');
-const { requireAdmin }  = require('../../middlewares/admin.middleware');
-const PrintOrder  = require('../../models/print-order.model');
-const User        = require('../../models/user.model');
+const router = require('express').Router();
+const { authenticate } = require('../../middlewares/auth.middleware');
+const { requireAdmin } = require('../../middlewares/admin.middleware');
+const svc = require('../../services/order.service');
 
-const VALID_STATUSES = ['pending', 'confirmed', 'printing', 'delivered', 'cancelled'];
-
+// Print orders are normal orders with orderType 'print' (see order.model).
+// These routes are the Print Orders page's view onto them; status changes go
+// through the same service as every other order, so timeline, customer push
+// and rider withdrawal all happen the same way.
 router.use(authenticate, requireAdmin);
 
 // GET /api/admin/print-orders/stats
 router.get('/stats', async (req, res) => {
-  try {
-    const [total, pending, confirmed, printing, delivered, cancelled] = await Promise.all([
-      PrintOrder.count(),
-      PrintOrder.count({ where: { status: 'pending' } }),
-      PrintOrder.count({ where: { status: 'confirmed' } }),
-      PrintOrder.count({ where: { status: 'printing' } }),
-      PrintOrder.count({ where: { status: 'delivered' } }),
-      PrintOrder.count({ where: { status: 'cancelled' } }),
-    ]);
-    res.json({ total, pending, confirmed, printing, delivered, cancelled });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  try { res.json(await svc.getStats({ type: 'print' })); }
+  catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 // GET /api/admin/print-orders
 router.get('/', async (req, res) => {
-  try {
-    const { status, page = 1, limit = 20 } = req.query;
-    const where = {};
-    if (status && status !== 'all') where.status = status;
+  try { res.json(await svc.list({ ...req.query, type: 'print' })); }
+  catch (err) { res.status(500).json({ message: err.message }); }
+});
 
-    const { count, rows } = await PrintOrder.findAndCountAll({
-      where,
-      include: [{ model: User, as: 'customer', attributes: ['id', 'name', 'mobile', 'email'] }],
-      order: [['created_at', 'DESC']],
-      limit:  Number(limit),
-      offset: (Number(page) - 1) * Number(limit),
-    });
-
-    res.json({ orders: rows, total: count, pages: Math.ceil(count / Number(limit)) });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+// GET /api/admin/print-orders/:id
+router.get('/:id', async (req, res) => {
+  try { res.json({ order: await svc.getById(req.params.id) }); }
+  catch (err) { res.status(404).json({ message: err.message }); }
 });
 
 // PATCH /api/admin/print-orders/:id/status
 router.patch('/:id/status', async (req, res) => {
   try {
-    const { status } = req.body;
-    if (!VALID_STATUSES.includes(status)) {
-      return res.status(400).json({ message: 'Invalid status' });
-    }
-    const order = await PrintOrder.findByPk(req.params.id);
-    if (!order) return res.status(404).json({ message: 'Print order not found' });
-    await order.update({ status });
-    res.json({ order });
+    await svc.updateStatus(req.params.id, req.body.status, req.body.note);
+    res.json({ order: await svc.getById(req.params.id) });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(400).json({ message: err.message });
   }
 });
 

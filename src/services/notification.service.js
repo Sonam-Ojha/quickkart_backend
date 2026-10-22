@@ -108,9 +108,14 @@ const notifyRiderNewOrder = async (riderId, order) => {
       ? items.join(', ')
       : `${items.slice(0, MAX_SHOW).join(', ')} (+${items.length - MAX_SHOW} more)`;
 
+  const job = order.orderType === 'print' ? order.printJob : null;
+  const whatLine = job
+    ? `🖨️ Print order · ${job.files?.length ?? 0} file(s), ${job.totalPages ?? 0} page(s) × ${job.copies ?? 1}`
+    : `🛒 ${itemsLine}`;
+
   await sendToRider(riderId, {
-    title: `🛵 New Order — ₹${Math.round(order.total ?? 0)}`,
-    body:  `📍 ${location}\n🛒 ${itemsLine}`,
+    title: `🛵 New ${job ? 'Print ' : ''}Order — ₹${Math.round(order.total ?? 0)}`,
+    body:  `📍 ${location}\n${whatLine}`,
     data:  { orderId: String(order.id), type: 'new_order', screen: 'OrderOffer' },
   });
 };
