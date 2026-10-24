@@ -18,6 +18,16 @@ const Order = sequelize.define('Order', {
   total:        { type: DataTypes.INTEGER, allowNull: false },
   cancelReason: { type: DataTypes.STRING(255), allowNull: true, field: 'cancel_reason' },
 
+  // ── Print orders ──────────────────────────────────────────────────────
+  // A print order is a normal order (same store, rider dispatch, payment,
+  // tracking and admin views) with no order_items — what to print lives in
+  // printJob instead:
+  //   { files: [{ name, url, key, pages }], color: 'bw'|'color',
+  //     paper: 'A4'|'A3'|'Letter', sides: 'single'|'double', copies,
+  //     totalPages, ratePerPage }
+  orderType:    { type: DataTypes.ENUM('grocery', 'print'), defaultValue: 'grocery', allowNull: false, field: 'order_type' },
+  printJob:     { type: DataTypes.JSON, allowNull: true, field: 'print_job' },
+
   // ── Rider delivery flow ───────────────────────────────────────────────
   // `status` above stays the shared lifecycle (customer app + admin panel
   // both read it). The rider app's finer steps live here so widening the

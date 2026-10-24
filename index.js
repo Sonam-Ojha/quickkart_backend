@@ -67,14 +67,15 @@ function startServer() {
   });
 }
 
-// In production: just verify the connection (1 query, 1 connection).
-// In dev: sync with alter so schema changes apply automatically.
+// In production: verify the connection, then only *add* missing tables/columns
+// (ensureSchema) so a deploy with a new model field doesn't 500 on
+// "Unknown column". In dev: sync with alter so schema changes apply fully.
 // sync({ alter }) opens 50-100+ connections across all tables — this was
 // exhausting Hostinger's 500-connections/hour limit on every restart.
 const isProd = process.env.NODE_ENV === 'production';
 
 const dbInit = isProd
-  ? sequelize.authenticate()
+  ? sequelize.authenticate().then(() => require('./src/config/ensure-schema')())
   : sequelize.sync({ alter: { drop: false } });
 
 dbInit
