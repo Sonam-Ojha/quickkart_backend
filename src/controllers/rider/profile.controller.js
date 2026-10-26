@@ -105,7 +105,7 @@ const saveFcmToken = async (req, res) => {
   try {
     const { token } = req.body;
     if (!token) return res.status(400).json({ message: 'token is required' });
-    await Rider.update({ fcm_token: token }, { where: { id: req.rider.id } });
+    await Rider.update({ fcmToken: token }, { where: { id: req.rider.id } });
     return res.json({ ok: true });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };

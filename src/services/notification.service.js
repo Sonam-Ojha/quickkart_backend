@@ -32,30 +32,30 @@ const sendToToken = async (token, { title, body, data = {} }) => {
 
 const sendToUser = async (userId, payload) => {
   console.log(`[FCM] sendToUser → userId=${userId} fcmReady=${fcmReady()}`);
-  const user = await User.findByPk(userId, { attributes: ['id', 'fcm_token'] });
-  console.log(`[FCM] user fcm_token=${user?.fcm_token ? 'SET' : 'NULL'}`);
-  if (!user?.fcm_token) return;
-  const res = await sendToToken(user.fcm_token, payload);
+  const user = await User.findByPk(userId, { attributes: ['id', 'fcmToken'] });
+  console.log(`[FCM] user fcmToken=${user?.fcmToken ? 'SET' : 'NULL'}`);
+  if (!user?.fcmToken) return;
+  const res = await sendToToken(user.fcmToken, payload);
   console.log(`[FCM] sendToToken result=`, res);
-  if (res?.stale) await User.update({ fcm_token: null }, { where: { id: userId } });
+  if (res?.stale) await User.update({ fcmToken: null }, { where: { id: userId } });
 };
 
 const sendToRider = async (riderId, payload) => {
-  const rider = await Rider.findByPk(riderId, { attributes: ['id', 'fcm_token'] });
-  if (!rider?.fcm_token) return;
-  const res = await sendToToken(rider.fcm_token, payload);
-  if (res?.stale) await Rider.update({ fcm_token: null }, { where: { id: riderId } });
+  const rider = await Rider.findByPk(riderId, { attributes: ['id', 'fcmToken'] });
+  if (!rider?.fcmToken) return;
+  const res = await sendToToken(rider.fcmToken, payload);
+  if (res?.stale) await Rider.update({ fcmToken: null }, { where: { id: riderId } });
 };
 
 // Send to many rider ids
 const sendToManyRiders = async (riderIds, payload) => {
   const riders = await Rider.findAll({
     where: { id: riderIds },
-    attributes: ['id', 'fcm_token'],
+    attributes: ['id', 'fcmToken'],
   });
   const sends = riders
-    .filter(r => r.fcm_token)
-    .map(r => sendToToken(r.fcm_token, payload));
+    .filter(r => r.fcmToken)
+    .map(r => sendToToken(r.fcmToken, payload));
   return Promise.allSettled(sends);
 };
 
@@ -63,9 +63,9 @@ const sendToManyRiders = async (riderIds, payload) => {
 const sendToUsers = async (userIds, payload) => {
   const users = await User.findAll({
     where: { id: userIds },
-    attributes: ['id', 'fcm_token'],
+    attributes: ['id', 'fcmToken'],
   });
-  const tokens = users.map(u => u.fcm_token).filter(Boolean);
+  const tokens = users.map(u => u.fcmToken).filter(Boolean);
   if (!tokens.length || !fcmReady()) return;
   const messages = tokens.map(token => ({
     token,

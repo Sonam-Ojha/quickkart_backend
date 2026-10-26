@@ -41,7 +41,7 @@ const saveFcmToken = async (req, res) => {
     const { token } = req.body;
     console.log(`[FCM TOKEN] userId=${req.user.id} token=${token ? token.slice(0,20)+'...' : 'NULL'}`);
     if (!token) return res.status(400).json({ message: 'token is required' });
-    await User.update({ fcm_token: token }, { where: { id: req.user.id } });
+    await User.update({ fcmToken: token }, { where: { id: req.user.id } });
     console.log(`[FCM TOKEN] saved for userId=${req.user.id}`);
     return res.json({ ok: true });
   } catch (err) {
