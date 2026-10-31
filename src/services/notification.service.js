@@ -1,6 +1,16 @@
 const admin  = require('../config/firebase');
 const User   = require('../models/user.model');
 const Rider  = require('../models/rider.model');
+const AdminNotification = require('../models/admin-notification.model');
+
+// Save notification to DB for admin notification center
+const saveAdminNotification = async ({ title, body, type = 'system', sourceId = null, icon = null }) => {
+  try {
+    await AdminNotification.create({ title, body, type, sourceId, icon });
+  } catch (e) {
+    console.error('[AdminNotif] save failed:', e.message);
+  }
+};
 
 const fcmReady = () => admin.apps && admin.apps.length > 0;
 
@@ -95,6 +105,29 @@ const notifyOrderStatus = async (order, newStatus) => {
   await sendToUser(order.customerId, builder(String(order.id)));
 };
 
+const notifyAdminNewOrder = async (order) => {
+  const title = `🛒 New Order #${order.id} — ₹${Math.round(order.total ?? 0)}`;
+  const body  = `A new order has been placed. Tap to review.`;
+  // Save to DB first (always, even if FCM fails)
+  console.log('[ADMIN NOTIF] saving to DB…');
+  await saveAdminNotification({ title, body, type: 'order', sourceId: order.id, icon: '🛒' });
+  console.log('[ADMIN NOTIF] DB saved ✓');
+  try {
+    const { Op } = require('sequelize');
+    const admins = await User.findAll({
+      where: {
+        role: { [Op.in]: ['super_admin', 'ops_manager'] },
+        fcmToken: { [Op.ne]: null },
+      },
+      attributes: ['id'],
+    });
+    if (!admins.length) return;
+    await sendToUsers(admins.map(a => a.id), { title, body, data: { orderId: String(order.id), type: 'new_order' } });
+  } catch (err) {
+    console.error('[FCM] notifyAdminNewOrder:', err.message);
+  }
+};
+
 const notifyRiderNewOrder = async (riderId, order) => {
   // Build location line from address if available.
   const addr = order.address;
@@ -127,6 +160,8 @@ module.exports = {
   sendToToken,
   sendToUser,
   sendToRider,
+  notifyAdminNewOrder,
+  saveAdminNotification,
   sendToManyRiders,
   sendToUsers,
   notifyOrderStatus,

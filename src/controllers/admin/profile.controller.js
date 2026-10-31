@@ -34,4 +34,16 @@ const changePassword = async (req, res) => {
   }
 };
 
-module.exports = { getProfile, updateProfile, changePassword };
+const saveFcmToken = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ message: 'token required' });
+    const User = require('../../models/user.model');
+    await User.update({ fcmToken: token }, { where: { id: req.user.id } });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { getProfile, updateProfile, changePassword, saveFcmToken };

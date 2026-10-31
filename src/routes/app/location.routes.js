@@ -1,7 +1,7 @@
 const https  = require('https');
 const router = require('express').Router();
 
-const GOOGLE_API_KEY = 'AIzaSyDoTvasMdk4HQhrfTO5pWkEGJAfhbVcqAk';
+const GOOGLE_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 const CACHE_TTL_MS      = 60 * 60 * 1000;  // 1 hour

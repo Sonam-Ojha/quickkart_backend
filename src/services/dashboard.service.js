@@ -11,26 +11,33 @@ const todayStart = () => {
   const d = new Date(); d.setHours(0,0,0,0); return d;
 };
 
-const getKpis = async () => {
-  const today = todayStart();
+const dateWhere = (from, to) => {
+  if (!from && !to) return {};
+  const w = {};
+  if (from) w[Op.gte] = from;
+  if (to)   w[Op.lte] = to;
+  return { created_at: w };
+};
+
+const getKpis = async (from, to) => {
+  const base = dateWhere(from, to);
+  const today = from ? null : todayStart();
+  const orderWhere   = from ? base : { created_at: { [Op.gte]: today } };
+  const revenueWhere = from ? { status: 'delivered', ...base } : { status: 'delivered', created_at: { [Op.gte]: today } };
   const [todayOrders, todayRevenue, totalCustomers, activeRiders] = await Promise.all([
-    Order.count({ where: { created_at: { [Op.gte]: today } } }),
-    Order.sum('total', { where: { status: 'delivered', created_at: { [Op.gte]: today } } }),
+    Order.count({ where: orderWhere }),
+    Order.sum('total', { where: revenueWhere }),
     User.count({ where: { role: 'user' } }),
     Rider.count({ where: { status: 'active' } }),
   ]);
-  return {
-    todayOrders,
-    todayRevenue: todayRevenue || 0,
-    totalCustomers,
-    activeRiders,
-  };
+  return { todayOrders, todayRevenue: todayRevenue || 0, totalCustomers, activeRiders };
 };
 
-const getOrderStatusDist = async () => {
+const getOrderStatusDist = async (from, to) => {
   const today = todayStart();
+  const where = from ? dateWhere(from, to) : { created_at: { [Op.gte]: today } };
   const results = await Order.findAll({
-    where: { created_at: { [Op.gte]: today } },
+    where,
     attributes: ['status', [fn('COUNT', col('id')), 'count']],
     group: ['status'],
     raw: true,
@@ -41,26 +48,38 @@ const getOrderStatusDist = async () => {
 const getWeeklyChart = async () => {
   const days = [];
   for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    d.setHours(0,0,0,0);
+    const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0,0,0,0);
     const next = new Date(d); next.setDate(next.getDate() + 1);
     const [orderCount, revenue] = await Promise.all([
       Order.count({ where: { created_at: { [Op.gte]: d, [Op.lt]: next } } }),
       Order.sum('total', { where: { status: 'delivered', created_at: { [Op.gte]: d, [Op.lt]: next } } }),
     ]);
-    days.push({
-      day: d.toLocaleDateString('en-IN', { weekday: 'short' }),
-      orders: orderCount,
-      revenue: revenue || 0,
-    });
+    days.push({ day: d.toLocaleDateString('en-IN', { weekday: 'short' }), orders: orderCount, revenue: revenue || 0 });
   }
   return days;
 };
 
-const getRecentOrders = async () => {
+const getRangeChart = async (from, to) => {
+  const days = [];
+  const cur = new Date(from); cur.setHours(0,0,0,0);
+  const end = new Date(to);   end.setHours(23,59,59,999);
+  while (cur <= end) {
+    const next = new Date(cur); next.setDate(next.getDate() + 1);
+    const [orderCount, revenue] = await Promise.all([
+      Order.count({ where: { created_at: { [Op.gte]: new Date(cur), [Op.lt]: next } } }),
+      Order.sum('total', { where: { status: 'delivered', created_at: { [Op.gte]: new Date(cur), [Op.lt]: next } } }),
+    ]);
+    days.push({ day: cur.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }), orders: orderCount, revenue: revenue || 0 });
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+};
+
+const getRecentOrders = async (from, to) => {
+  const where = from ? dateWhere(from, to) : {};
   return Order.findAll({
-    limit: 5,
+    where,
+    limit: 10,
     order: [['created_at', 'DESC']],
     include: [
       { model: User,      as: 'customer', attributes: ['id', 'name'] },
@@ -70,14 +89,18 @@ const getRecentOrders = async () => {
   });
 };
 
-const getTopProducts = async () => {
+const getTopProducts = async (from, to) => {
+  const where = from ? dateWhere(from, to) : {};
   const results = await OrderItem.findAll({
     attributes: [
       'productId',
-      [fn('SUM', col('quantity')),       'totalQty'],
+      [fn('SUM', col('quantity')),        'totalQty'],
       [fn('SUM', col('OrderItem.total')), 'totalRevenue'],
     ],
-    include: [{ model: Product, as: 'product', attributes: ['id', 'name'] }],
+    include: [
+      { model: Product, as: 'product', attributes: ['id', 'name'] },
+      ...(from ? [{ model: Order, as: 'order', attributes: [], where, required: true }] : []),
+    ],
     group: ['productId', 'product.id'],
     order: [[literal('totalQty'), 'DESC']],
     limit: 5,
@@ -91,4 +114,4 @@ const getTopProducts = async () => {
   }));
 };
 
-module.exports = { getKpis, getOrderStatusDist, getWeeklyChart, getRecentOrders, getTopProducts };
+module.exports = { getKpis, getOrderStatusDist, getWeeklyChart, getRangeChart, getRecentOrders, getTopProducts };

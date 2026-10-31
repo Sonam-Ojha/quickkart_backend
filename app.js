@@ -115,7 +115,8 @@ app.use('/api/admin/rider-ops',   adminRiderOpsRoutes);
 app.use('/api/admin/geo',         adminGeoRoutes);
 app.use('/api/admin/print-orders',      require('./src/routes/admin/print-orders.routes'));
 app.use('/api/admin/account-deletions', adminAccountDeletionRoutes);
-app.use('/api/admin/notifications',     require('./src/routes/admin/notifications.routes'));
+app.use('/api/admin/notifications',       require('./src/routes/admin/notifications.routes'));
+app.use('/api/admin/admin-notifications', require('./src/routes/admin/admin-notifications.routes'));
 
 // ── Customer App API (/api/app/...) ──────────────────────
 app.use('/api/app/auth',       appAuthRoutes);

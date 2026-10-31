@@ -1,6 +1,7 @@
 const { Op }          = require('sequelize');
 const sequelize       = require('../config/db');
 const { notifyRiderNewOrder } = require('./notification.service');
+const { sendSms }     = require('./otp.service');
 const realtime        = require('./realtime.service');
 const Order           = require('../models/order.model');
 const OrderItem       = require('../models/order-item.model');
@@ -79,7 +80,7 @@ const offerOrder = async (orderId) => {
   // Active online riders whose service area covers this order's store.
   const online = await Rider.findAll({
     where: { status: 'active', isOnline: true },
-    attributes: ['id', 'storeId', 'serviceLat', 'serviceLng', 'serviceRadius'],
+    attributes: ['id', 'name', 'mobile', 'storeId', 'serviceLat', 'serviceLng', 'serviceRadius'],
   });
   if (!online.length) return { offered: 0, reason: 'no online riders available' };
   const riders = online.filter(r => servesStore(r, order.store));
@@ -116,10 +117,22 @@ const offerOrder = async (orderId) => {
   await Rider.increment('offeredCount', { where: { id: eligible.map(r => r.id) } });
   await order.update({ riderStage: 'offered', assignedAt: new Date(), ...computePayout(order) });
 
-  // Live card for riders with the app open; push for everyone else.
+  // Build SMS once — address line for pickup and drop
+  const addr    = order.address;
+  const dropLine = addr ? [addr.line1, addr.city].filter(Boolean).join(', ') : 'Customer location';
+  const store   = order.store;
+  const items   = (order.items ?? []).map(i => i.product?.name).filter(Boolean);
+  const itemsText = items.length ? items.slice(0, 3).join(', ') + (items.length > 3 ? ` +${items.length - 3} more` : '') : `${order.items?.length ?? '?'} items`;
+
+  // Live card for riders with the app open; push + SMS for everyone else.
   eligible.forEach(r => {
     realtime.toRider(r.id, 'offer:new', { orderId: order.id });
     notifyRiderNewOrder(r.id, order).catch(() => {});
+    if (r.mobile) {
+      sendSms(r.mobile,
+        `Jhatpats: New order #${order.id} for you! Items: ${itemsText}. Drop: ${dropLine}. Total: Rs.${Math.round(order.total ?? 0)}. Open app to accept.`
+      ).catch(() => {});
+    }
   });
 
   return { offered: eligible.length, expiresAt };

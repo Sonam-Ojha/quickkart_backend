@@ -10,6 +10,7 @@ const Address       = require('../../models/address.model');
 const User          = require('../../models/user.model');
 const sequelize     = require('../../../src/config/db');
 const { sendSms }   = require('../../services/otp.service');
+const { notifyAdminNewOrder } = require('../../services/notification.service');
 const { storeForDelivery, storeCatalog, NOT_SERVICEABLE } = require('../../services/storefront.service');
 
 const list = async (req, res) => {
@@ -169,6 +170,9 @@ const place = async (req, res) => {
         `Hi ${customer.name || 'there'}! Your Jhatpats order #${order.id} is placed. Total: Rs.${total}. Payment: ${payLabel}. Delivery OTP: ${deliveryOtp}. Share it only with your rider.`
       ).catch(() => {});
     }
+
+    // Notify admin of new order (best-effort)
+    notifyAdminNewOrder({ id: order.id, total }).catch(err => console.error('[ADMIN NOTIF] failed:', err.message));
 
     // Fan out to riders. Best-effort: if nobody is online the sweeper retries,
     // and a dispatch failure must never fail an order the customer already paid for.

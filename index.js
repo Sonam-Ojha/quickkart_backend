@@ -53,6 +53,7 @@ require('./src/models/rider-order-offer.model');  // → riders, orders
 require('./src/models/rider-earning.model');      // → riders, orders
 require('./src/models/rider-support-message.model'); // → riders
 require('./src/models/print-order.model');           // → users
+require('./src/models/admin-notification.model');    // standalone
 
 const PORT = process.env.PORT || 4000;
 

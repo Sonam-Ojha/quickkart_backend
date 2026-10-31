@@ -3,6 +3,7 @@ const RiderDocument = require('../../models/rider-document.model');
 const s3            = require('../../services/s3.service');
 const otpService    = require('../../services/otp.service');
 const nodemailer    = require('nodemailer');
+const { sendToUsers } = require('../../services/notification.service');
 
 const DOC_LABELS = {
   aadhaar:    'Aadhaar Card',
@@ -59,6 +60,27 @@ async function _notifyAdmin(rider, docType) {
   if (adminMobile) {
     const msg = `Jhatpats: KYC document uploaded by rider ${rider.name} (${rider.mobile}) — ${docLabel}. Review at admin.jhatpats.com`;
     otpService.sendSms(adminMobile, msg).catch(() => {});
+  }
+
+  // ── FCM + DB Notification (admin panel) ───────────────────────────────────
+  try {
+    const { Op } = require('sequelize');
+    const User = require('../../models/user.model');
+    const AdminNotification = require('../../models/admin-notification.model');
+    const notifTitle = `📄 KYC Document — ${rider.name}`;
+    const notifBody  = `${rider.name} (${rider.mobile}) ne ${docLabel} upload kiya. Review karo.`;
+    // Save to DB always
+    await AdminNotification.create({ title: notifTitle, body: notifBody, type: 'kyc_document', sourceId: rider.id, icon: '📄' });
+    // FCM push
+    const admins = await User.findAll({
+      where: { role: { [Op.in]: ['super_admin', 'ops_manager'] }, fcmToken: { [Op.ne]: null } },
+      attributes: ['id'],
+    });
+    if (admins.length) {
+      await sendToUsers(admins.map(a => a.id), { title: notifTitle, body: notifBody, data: { type: 'kyc_document', riderId: String(rider.id) } });
+    }
+  } catch (e) {
+    console.error('[KYC NOTIFY] FCM failed:', e.message);
   }
 }
 
