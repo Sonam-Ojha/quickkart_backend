@@ -99,7 +99,8 @@ const getTopProducts = async (from, to) => {
     ],
     include: [
       { model: Product, as: 'product', attributes: ['id', 'name'] },
-      ...(from ? [{ model: Order, as: 'order', attributes: [], where, required: true }] : []),
+      ...(from ? [{ model: Order, as: 'Order', attributes: [], where, required: true }] : []),
+
     ],
     group: ['productId', 'product.id'],
     order: [[literal('totalQty'), 'DESC']],

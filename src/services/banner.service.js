@@ -5,12 +5,14 @@ const list = () =>
 
 const create = async ({ title, subtitle, bannerImage, section, emoji, bgType, deeplink, sortOrder, validTo, isActive }) => {
   if (!bannerImage) throw new Error('Banner image URL is required');
-  return Banner.create({ title, subtitle, bannerImage, section, emoji, bgType, deeplink, sortOrder, validTo, isActive });
+  return Banner.create({ title: title ?? '', subtitle: subtitle ?? '', bannerImage, section, emoji, bgType, deeplink, sortOrder, validTo, isActive });
 };
 
 const update = async (id, data) => {
   const banner = await Banner.findByPk(id);
   if (!banner) throw new Error('Banner not found');
+  if (data.title === null) data.title = '';
+  if (data.subtitle === null) data.subtitle = '';
   await banner.update(data);
   return banner;
 };
