@@ -211,8 +211,27 @@ const bulkDeleteProducts = async (ids) => {
   if (!ids || !Array.isArray(ids) || ids.length === 0) {
     throw new Error('ids array is required');
   }
-  const count = await Product.destroy({ where: { id: { [Op.in]: ids } } });
-  return { deleted: count };
+  // Collect all product ids that are referenced by order_items or inventory
+  const blockedSet = new Set();
+  try {
+    const OI = require('../models/order-item.model');
+    const usedInOrders = await OI.findAll({ attributes: ['productId'], where: { productId: { [Op.in]: ids } }, group: ['productId'], raw: true });
+    usedInOrders.forEach(r => blockedSet.add(r.productId));
+  } catch (_) {}
+  try {
+    const Inventory = require('../models/inventory.model');
+    const usedInInventory = await Inventory.findAll({ attributes: ['productId'], where: { productId: { [Op.in]: ids } }, group: ['productId'], raw: true });
+    usedInInventory.forEach(r => blockedSet.add(r.productId));
+  } catch (_) {}
+
+  const safeIds = ids.filter(id => !blockedSet.has(id));
+  const skipped = ids.length - safeIds.length;
+
+  if (safeIds.length === 0) {
+    return { deleted: 0, skipped, message: 'Ye products delete nahi ho sakte kyunki inke orders ya inventory records pehle se exist karte hain. Pehle unhe hatao ya product ko sirf deactivate karo.' };
+  }
+  const count = await Product.destroy({ where: { id: { [Op.in]: safeIds } } });
+  return { deleted: count, skipped };
 };
 
 module.exports = {
