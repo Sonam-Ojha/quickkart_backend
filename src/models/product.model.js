@@ -25,6 +25,9 @@ const Product = sequelize.define('Product', {
   },
   tag:        { type: DataTypes.ENUM('deal', 'bestseller', 'new', 'fresh'), allowNull: true },
   isActive:   { type: DataTypes.BOOLEAN, defaultValue: true, field: 'is_active' },
+  // "Deleted" in the admin but kept for past orders, which read the product
+  // row for its name. Hidden from the admin list; always inactive.
+  isArchived: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'is_archived' },
 }, {
   tableName: 'products',
   timestamps: true,

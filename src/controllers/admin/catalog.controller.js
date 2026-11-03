@@ -159,6 +159,7 @@ const bulkDeleteProducts = async (req, res) => {
     const result = await svc.bulkDeleteProducts(ids);
     res.json({ message: `${result.deleted} products deleted`, ...result });
   } catch (err) {
+    console.error('[catalog] bulk delete failed:', err.message);
     res.status(400).json({ message: err.message });
   }
 };

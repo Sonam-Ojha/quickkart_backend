@@ -7,7 +7,7 @@ const Product = require('../models/product.model');
 const SECTIONS = ['grocery', 'fresh'];
 
 const getAllCategories = async ({ section } = {}) => {
-  const where = SECTIONS.includes(section) ? { section } : {};
+  const where = SECTIONS.includes(section) ? { section, isArchived: false } : { isArchived: false };
   return Category.findAll({ where, order: [['sort_order', 'ASC'], ['id', 'ASC']] });
 };
 
@@ -41,11 +41,8 @@ const updateCategory = async (id, data) => {
 const deleteCategory = async (id) => {
   const cat = await Category.findByPk(id);
   if (!cat) throw new Error('Category not found');
-  const childCount = await Category.count({ where: { parentId: id } });
-  if (childCount > 0) throw new Error(`Cannot delete — ${childCount} sub-categories exist under this category. Delete sub-categories first.`);
-  const productCount = await Product.count({ where: { categoryId: id } });
-  if (productCount > 0) throw new Error(`Cannot delete — ${productCount} products use this category`);
-  await cat.destroy();
+  const { skipped } = await bulkDeleteCategories([cat.id]);
+  if (skipped.length) throw new Error(`Cannot delete — ${skipped[0].reason}`);
 };
 
 const toggleCategory = async (id) => {
@@ -97,17 +94,44 @@ const bulkUpdateCategories = async (payload) => {
   return { updated: count };
 };
 
+// Deletes each selected category it safely can and reports the rest:
+//  • a category with live products, or live sub-categories that aren't also
+//    selected, is skipped with the reason;
+//  • one only referenced by archived products/sub-categories is archived
+//    (inactive + hidden from the admin) since those rows still point at it;
+//  • everything else is deleted. Sub-categories go first so their parents free up.
 const bulkDeleteCategories = async (ids) => {
   if (!ids || !Array.isArray(ids) || ids.length === 0) {
     throw new Error('ids array is required');
   }
-  // Block delete if any category has products
-  const productCount = await Product.count({ where: { categoryId: { [Op.in]: ids } } });
-  if (productCount > 0) {
-    throw new Error(`Cannot delete — ${productCount} products exist in selected categories`);
+  const cats = await Category.findAll({ where: { id: { [Op.in]: ids }, isArchived: false } });
+  cats.sort((a, b) => (b.parentId ? 1 : 0) - (a.parentId ? 1 : 0));
+
+  let deleted = 0, archived = 0;
+  const skipped = [];
+  for (const cat of cats) {
+    const liveProducts = await Product.count({ where: { categoryId: cat.id, isArchived: false } });
+    if (liveProducts > 0) {
+      skipped.push({ id: cat.id, name: cat.name, reason: `${liveProducts} product${liveProducts === 1 ? '' : 's'} still in "${cat.name}" — delete or move them first` });
+      continue;
+    }
+    const liveChildren = await Category.count({ where: { parentId: cat.id, isArchived: false } });
+    if (liveChildren > 0) {
+      skipped.push({ id: cat.id, name: cat.name, reason: `"${cat.name}" still has ${liveChildren} sub-categor${liveChildren === 1 ? 'y' : 'ies'} — delete them first` });
+      continue;
+    }
+    const stillReferenced =
+      await Product.count({ where: { categoryId: cat.id } }) +
+      await Category.count({ where: { parentId: cat.id } });
+    if (stillReferenced > 0) {
+      await cat.update({ isActive: false, isArchived: true });
+      archived++;
+    } else {
+      await cat.destroy();
+      deleted++;
+    }
   }
-  const count = await Category.destroy({ where: { id: { [Op.in]: ids } } });
-  return { deleted: count };
+  return { deleted, archived, skipped };
 };
 
 // ── Products ─────────────────────────────────────────────
@@ -115,7 +139,7 @@ const bulkDeleteCategories = async (ids) => {
 const getAllProducts = async ({ categoryId, search, activeOnly, page = 1, limit = 20 }) => {
   page  = parseInt(page)  || 1;
   limit = parseInt(limit) || 20;
-  const where = {};
+  const where = { isArchived: false };
   if (categoryId) where.categoryId = categoryId;
   if (search) where.name = { [Op.like]: `%${search}%` };
   if (activeOnly === 'true') where.isActive = true;
@@ -158,7 +182,7 @@ const updateProduct = async (id, data) => {
 const deleteProduct = async (id) => {
   const product = await Product.findByPk(id);
   if (!product) throw new Error('Product not found');
-  await product.destroy();
+  await bulkDeleteProducts([product.id]);
 };
 
 const toggleProduct = async (id) => {
@@ -207,31 +231,42 @@ const bulkUpdateProducts = async (payload) => {
   return { updated: count };
 };
 
+// Products that appear in past orders can't be removed — order history reads
+// the product row for its name. Those are archived instead: deactivated
+// (hidden from customers) and dropped from the admin list. Everything else goes, together with its stock, store-visibility,
+// cart and wishlist rows, which would otherwise block the delete.
 const bulkDeleteProducts = async (ids) => {
   if (!ids || !Array.isArray(ids) || ids.length === 0) {
     throw new Error('ids array is required');
   }
-  // Collect all product ids that are referenced by order_items or inventory
-  const blockedSet = new Set();
-  try {
-    const OI = require('../models/order-item.model');
-    const usedInOrders = await OI.findAll({ attributes: ['productId'], where: { productId: { [Op.in]: ids } }, group: ['productId'], raw: true });
-    usedInOrders.forEach(r => blockedSet.add(r.productId));
-  } catch (_) {}
-  try {
-    const Inventory = require('../models/inventory.model');
-    const usedInInventory = await Inventory.findAll({ attributes: ['productId'], where: { productId: { [Op.in]: ids } }, group: ['productId'], raw: true });
-    usedInInventory.forEach(r => blockedSet.add(r.productId));
-  } catch (_) {}
+  const OrderItem              = require('../models/order-item.model');
+  const Inventory              = require('../models/inventory.model');
+  const ProductStoreVisibility = require('../models/product-store-visibility.model');
+  const CartItem               = require('../models/cart-item.model');
+  const Wishlist               = require('../models/wishlist.model');
 
-  const safeIds = ids.filter(id => !blockedSet.has(id));
-  const skipped = ids.length - safeIds.length;
+  const ordered = await OrderItem.findAll({ attributes: ['productId'], where: { productId: { [Op.in]: ids } }, group: ['productId'], raw: true });
+  const orderedIds = new Set(ordered.map(r => r.productId));
+  const deletableIds = ids.filter(id => !orderedIds.has(id));
+  const keptIds = ids.filter(id => orderedIds.has(id));
 
-  if (safeIds.length === 0) {
-    return { deleted: 0, skipped, message: 'Ye products delete nahi ho sakte kyunki inke orders ya inventory records pehle se exist karte hain. Pehle unhe hatao ya product ko sirf deactivate karo.' };
+  let deleted = 0;
+  if (deletableIds.length) {
+    deleted = await Product.sequelize.transaction(async (transaction) => {
+      const where = { productId: { [Op.in]: deletableIds } };
+      for (const M of [Inventory, ProductStoreVisibility, CartItem, Wishlist]) {
+        await M.destroy({ where, transaction });
+      }
+      return Product.destroy({ where: { id: { [Op.in]: deletableIds } }, transaction });
+    });
   }
-  const count = await Product.destroy({ where: { id: { [Op.in]: safeIds } } });
-  return { deleted: count, skipped };
+
+  let archived = 0;
+  if (keptIds.length) {
+    [archived] = await Product.update({ isActive: false, isArchived: true }, { where: { id: { [Op.in]: keptIds } } });
+  }
+
+  return { deleted, archived };
 };
 
 module.exports = {
