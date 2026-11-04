@@ -239,16 +239,17 @@ const bulkDeleteProducts = async (ids) => {
   if (!ids || !Array.isArray(ids) || ids.length === 0) {
     throw new Error('ids array is required');
   }
+  const numericIds = ids.map(Number);
   const OrderItem              = require('../models/order-item.model');
   const Inventory              = require('../models/inventory.model');
   const ProductStoreVisibility = require('../models/product-store-visibility.model');
   const CartItem               = require('../models/cart-item.model');
   const Wishlist               = require('../models/wishlist.model');
 
-  const ordered = await OrderItem.findAll({ attributes: ['productId'], where: { productId: { [Op.in]: ids } }, group: ['productId'], raw: true });
-  const orderedIds = new Set(ordered.map(r => r.productId));
-  const deletableIds = ids.filter(id => !orderedIds.has(id));
-  const keptIds = ids.filter(id => orderedIds.has(id));
+  const ordered = await OrderItem.findAll({ attributes: ['productId'], where: { productId: { [Op.in]: numericIds } }, group: ['productId'], raw: true });
+  const orderedIds = new Set(ordered.map(r => Number(r.product_id ?? r.productId)));
+  const deletableIds = numericIds.filter(id => !orderedIds.has(id));
+  const keptIds = numericIds.filter(id => orderedIds.has(id));
 
   let deleted = 0;
   if (deletableIds.length) {

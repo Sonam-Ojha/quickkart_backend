@@ -1,6 +1,15 @@
 // Load .env only in local dev; production uses hosting panel env vars
 try { require('dotenv').config(); } catch (_) {}
 
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] uncaughtException:', err.message, err.stack);
+  // Don't exit — let the process keep running so live traffic isn't dropped
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] unhandledRejection:', reason);
+});
+
 // The DB host resolves to both IPv6 and IPv4, and the IPv4 route is currently
 // blackholed. Node's happy-eyeballs races them 250ms apart by default, which
 // often lets the dead IPv4 attempt win the race and fail with ETIMEDOUT.
