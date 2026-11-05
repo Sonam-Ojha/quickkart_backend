@@ -5,6 +5,7 @@ const SupportTicket = sequelize.define('SupportTicket', {
   id:         { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   customerId: { type: DataTypes.INTEGER, allowNull: false, field: 'customer_id', references: { model: 'users', key: 'id' } },
   orderId:    { type: DataTypes.INTEGER, allowNull: true, field: 'order_id', references: { model: 'orders', key: 'id' } },
+  subject:    { type: DataTypes.STRING(255), allowNull: true, field: 'subject' },
   category:   { type: DataTypes.ENUM('delivery','payment','product','account','other'), allowNull: false, defaultValue: 'other' },
   status:     { type: DataTypes.ENUM('open','in_progress','resolved'), defaultValue: 'open' },
 }, {
