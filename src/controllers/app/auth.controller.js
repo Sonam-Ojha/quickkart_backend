@@ -121,7 +121,7 @@ const otpLogin = async (req, res) => {
       isNewUser = true;
       const randomPass = await bcrypt.hash(Math.random().toString(36), 10);
       const createData = {
-        name:     mobile ? `User ${mobile.slice(-4)}` : (email.split('@')[0] || 'User'),
+        name:     '',
         email:    email  || null,
         password: randomPass,
         role:     'user',

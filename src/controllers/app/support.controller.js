@@ -1,6 +1,22 @@
 const SupportTicket  = require('../../models/support-ticket.model');
 const SupportMessage = require('../../models/support-message.model');
-const { Op } = require('sequelize');
+const User           = require('../../models/user.model');
+const { Op }         = require('sequelize');
+const { sendToUser, saveAdminNotification, sendToToken } = require('../../services/notification.service');
+
+const ADMIN_ROLES = ['super_admin','ops_manager','support'];
+
+// Notify all admin users who have an FCM token
+const notifyAdmins = async ({ title, body, data = {} }) => {
+  try {
+    await saveAdminNotification({ title, body, type: 'support', sourceId: data.ticketId ?? null });
+    const admins = await User.findAll({
+      where: { role: { [Op.in]: ADMIN_ROLES }, fcmToken: { [Op.ne]: null } },
+      attributes: ['id', 'fcmToken'],
+    });
+    await Promise.allSettled(admins.map(a => sendToToken(a.fcmToken, { title, body, data })));
+  } catch (e) { console.error('[Support notify admins]', e.message); }
+};
 
 const createTicket = async (req, res) => {
   try {
@@ -20,6 +36,14 @@ const createTicket = async (req, res) => {
       message: message.trim(),
     });
     res.status(201).json({ ticket });
+    // Notify admins async (don't block response)
+    const user = await User.findByPk(req.user.id, { attributes: ['name', 'mobile'] });
+    const name = user?.name || user?.mobile || 'A customer';
+    notifyAdmins({
+      title: `New support request`,
+      body:  `${name}: ${message.trim().slice(0, 80)}`,
+      data:  { ticketId: String(ticket.id), screen: 'support' },
+    });
   } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
@@ -58,6 +82,14 @@ const sendMessage = async (req, res) => {
       message: message.trim(),
     });
     res.status(201).json({ message: msg });
+    // Notify admins async
+    const user = await User.findByPk(req.user.id, { attributes: ['name', 'mobile'] });
+    const name = user?.name || user?.mobile || 'A customer';
+    notifyAdmins({
+      title: `New message — Ticket #${ticket.id}`,
+      body:  `${name}: ${message.trim().slice(0, 80)}`,
+      data:  { ticketId: String(ticket.id), screen: 'support' },
+    });
   } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
