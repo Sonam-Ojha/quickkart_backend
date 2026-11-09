@@ -34,6 +34,38 @@ async function ensureSchema() {
     }
   }
 
+  // Apply indexes declared on models but missing from the DB
+  for (const model of Object.values(sequelize.models)) {
+    const rawIndexes = model.options?.indexes;
+    if (!rawIndexes || rawIndexes.length === 0) continue;
+    const table = model.getTableName();
+    const tableName = typeof table === 'string' ? table : table.tableName;
+
+    let existing;
+    try {
+      existing = await qi.showIndex(table);
+    } catch { continue; }
+
+    // Signature: sorted DB column names joined — matches regardless of index name
+    const existingSigs = new Set(
+      existing.map(idx => idx.fields.map(f => f.attribute).sort().join(','))
+    );
+
+    for (const indexDef of rawIndexes) {
+      const fields = indexDef.fields;
+      if (!fields || fields.length === 0) continue;
+      const sig = [...fields].sort().join(',');
+      if (existingSigs.has(sig)) continue;
+      const name = `idx_${tableName}_${fields.join('_')}`;
+      try {
+        await qi.addIndex(table, fields, { name, unique: indexDef.unique || false });
+        added.push(`${tableName} index(${fields.join(',')})`);
+      } catch (err) {
+        console.warn(`[schema] skipped index ${name}:`, err.message);
+      }
+    }
+  }
+
   if (added.length) console.log('[schema] added:', added.join(', '));
   return added;
 }

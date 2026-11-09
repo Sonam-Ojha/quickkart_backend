@@ -44,7 +44,8 @@ const update = async (req, res) => {
       where: { id: req.params.id, userId: req.user.id },
     });
     if (!address) return res.status(404).json({ message: 'Address not found' });
-    await address.update(req.body);
+    const { label, line1, line2, city, state, pincode, lat, lng, phone, is_default } = req.body;
+    await address.update({ label, line1, line2, city, state, pincode, lat, lng, phone, isDefault: is_default });
     return res.json(address);
   } catch (err) {
     return res.status(500).json({ message: err.message });

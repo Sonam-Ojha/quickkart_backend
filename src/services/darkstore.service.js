@@ -1,4 +1,3 @@
-const { Op } = require('sequelize');
 const DarkStore = require('../models/darkstore.model');
 const Rider     = require('../models/rider.model');
 const Inventory = require('../models/inventory.model');
@@ -45,6 +44,21 @@ const getStats = async (id) => {
 
 const hasCoord = (v) => v != null && v !== '' && Number.isFinite(Number(v));
 
+// Active-store list is cached for 60 s. Stores are rarely created/changed,
+// and this function is called on every customer product-list and order request.
+let _storeCache    = null;
+let _storeCacheAt  = 0;
+const STORE_TTL    = 60_000;
+
+const _getActiveStores = async () => {
+  if (_storeCache && Date.now() - _storeCacheAt < STORE_TTL) return _storeCache;
+  _storeCache   = await DarkStore.findAll({ where: { isActive: true } });
+  _storeCacheAt = Date.now();
+  return _storeCache;
+};
+
+const _invalidateStoreCache = () => { _storeCache = null; };
+
 // Find the nearest active store whose delivery radius covers the given coordinates.
 // Returns { store, distanceKm } — store is null when no store covers this location.
 //
@@ -55,7 +69,7 @@ const hasCoord = (v) => v != null && v !== '' && Number.isFinite(Number(v));
 const findNearestStore = async (lat, lng) => {
   if (!hasCoord(lat) || !hasCoord(lng)) return { store: null, distanceKm: null };
 
-  const stores = await DarkStore.findAll({ where: { isActive: true } });
+  const stores = await _getActiveStores();
 
   let nearest = null;
   let minDist = Infinity;
@@ -71,13 +85,16 @@ const findNearestStore = async (lat, lng) => {
 };
 
 const create = async ({ name, address, cityId, city, lat, lng, radius, isActive }) => {
-  return DarkStore.create({ name, address, cityId: cityId || null, city: city || '', lat, lng, radius: radius ?? 5, isActive });
+  const store = await DarkStore.create({ name, address, cityId: cityId || null, city: city || '', lat, lng, radius: radius ?? 5, isActive });
+  _invalidateStoreCache();
+  return store;
 };
 
 const update = async (id, data) => {
   const store = await DarkStore.findByPk(id);
   if (!store) throw new Error('Store not found');
   await store.update(data);
+  _invalidateStoreCache();
   return store;
 };
 
@@ -85,6 +102,7 @@ const toggle = async (id) => {
   const store = await DarkStore.findByPk(id);
   if (!store) throw new Error('Store not found');
   await store.update({ isActive: !store.isActive });
+  _invalidateStoreCache();
   return store;
 };
 
@@ -92,6 +110,7 @@ const remove = async (id) => {
   const store = await DarkStore.findByPk(id);
   if (!store) throw new Error('Store not found');
   await store.destroy();
+  _invalidateStoreCache();
 };
 
 module.exports = { getAll, getById, getStats, create, update, toggle, remove, findNearestStore, haversineKm };

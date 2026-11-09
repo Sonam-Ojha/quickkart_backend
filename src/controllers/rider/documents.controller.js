@@ -18,7 +18,7 @@ async function _notifyAdmin(rider, docType) {
   const adminEmail  = process.env.ADMIN_EMAIL;
   const adminMobile = process.env.ADMIN_MOBILE;
   const docLabel    = DOC_LABELS[docType] || docType;
-  const adminUrl    = 'https://admin.jhatpats.com/riders';
+  const adminUrl    = process.env.ADMIN_URL ? `${process.env.ADMIN_URL}/riders` : 'https://admin.jhatpats.com/riders';
 
   // ── Email ──────────────────────────────────────────────────────────────────
   if (adminEmail && process.env.SMTP_USER && process.env.SMTP_PASS) {

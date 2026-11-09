@@ -13,6 +13,9 @@ const OrderTimeline = sequelize.define('OrderTimeline', {
 }, {
   tableName: 'order_timeline',
   timestamps: false,
+  indexes: [
+    { fields: ['order_id'] },
+  ],
 });
 
 const Order = require('./order.model');

@@ -18,6 +18,9 @@ const Address = sequelize.define('Address', {
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['user_id'] },
+  ],
 });
 
 module.exports = Address;

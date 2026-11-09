@@ -11,9 +11,12 @@ const create = async ({ title, subtitle, bannerImage, section, emoji, bgType, de
 const update = async (id, data) => {
   const banner = await Banner.findByPk(id);
   if (!banner) throw new Error('Banner not found');
-  if (data.title === null) data.title = '';
-  if (data.subtitle === null) data.subtitle = '';
-  await banner.update(data);
+  const { title, subtitle, bannerImage, section, emoji, bgType, deeplink, sortOrder, validTo, isActive } = data;
+  await banner.update({
+    title:    title    ?? '',
+    subtitle: subtitle ?? '',
+    bannerImage, section, emoji, bgType, deeplink, sortOrder, validTo, isActive,
+  });
   return banner;
 };
 

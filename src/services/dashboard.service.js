@@ -46,33 +46,61 @@ const getOrderStatusDist = async (from, to) => {
 };
 
 const getWeeklyChart = async () => {
-  const days = [];
+  const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
+  // Single GROUP BY query instead of 14 sequential queries (2 per day × 7 days)
+  const rows = await sequelize.query(`
+    SELECT
+      DATE(created_at)                                                      AS day,
+      COUNT(*)                                                              AS orders,
+      COALESCE(SUM(CASE WHEN status = 'delivered' THEN total END), 0)      AS revenue
+    FROM orders
+    WHERE created_at >= :since
+    GROUP BY DATE(created_at)
+  `, { replacements: { since }, type: sequelize.QueryTypes.SELECT });
+
+  const byDay = new Map(rows.map(r => [String(r.day), r]));
+  const result = [];
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0,0,0,0);
-    const next = new Date(d); next.setDate(next.getDate() + 1);
-    const [orderCount, revenue] = await Promise.all([
-      Order.count({ where: { created_at: { [Op.gte]: d, [Op.lt]: next } } }),
-      Order.sum('total', { where: { status: 'delivered', created_at: { [Op.gte]: d, [Op.lt]: next } } }),
-    ]);
-    days.push({ day: d.toLocaleDateString('en-IN', { weekday: 'short' }), orders: orderCount, revenue: revenue || 0 });
+    const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
+    const key = d.toISOString().slice(0, 10);
+    const hit = byDay.get(key);
+    result.push({
+      day:     d.toLocaleDateString('en-IN', { weekday: 'short' }),
+      orders:  hit ? Number(hit.orders)  : 0,
+      revenue: hit ? Number(hit.revenue) : 0,
+    });
   }
-  return days;
+  return result;
 };
 
 const getRangeChart = async (from, to) => {
-  const days = [];
-  const cur = new Date(from); cur.setHours(0,0,0,0);
-  const end = new Date(to);   end.setHours(23,59,59,999);
+  const start = new Date(from); start.setHours(0, 0, 0, 0);
+  const end   = new Date(to);   end.setHours(23, 59, 59, 999);
+  // Single GROUP BY query regardless of range length
+  const rows = await sequelize.query(`
+    SELECT
+      DATE(created_at)                                                      AS day,
+      COUNT(*)                                                              AS orders,
+      COALESCE(SUM(CASE WHEN status = 'delivered' THEN total END), 0)      AS revenue
+    FROM orders
+    WHERE created_at >= :start AND created_at <= :end
+    GROUP BY DATE(created_at)
+  `, { replacements: { start, end }, type: sequelize.QueryTypes.SELECT });
+
+  const byDay = new Map(rows.map(r => [String(r.day), r]));
+  const result = [];
+  const cur = new Date(start);
   while (cur <= end) {
-    const next = new Date(cur); next.setDate(next.getDate() + 1);
-    const [orderCount, revenue] = await Promise.all([
-      Order.count({ where: { created_at: { [Op.gte]: new Date(cur), [Op.lt]: next } } }),
-      Order.sum('total', { where: { status: 'delivered', created_at: { [Op.gte]: new Date(cur), [Op.lt]: next } } }),
-    ]);
-    days.push({ day: cur.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }), orders: orderCount, revenue: revenue || 0 });
+    const key = cur.toISOString().slice(0, 10);
+    const hit = byDay.get(key);
+    result.push({
+      day:     cur.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+      orders:  hit ? Number(hit.orders)  : 0,
+      revenue: hit ? Number(hit.revenue) : 0,
+    });
     cur.setDate(cur.getDate() + 1);
   }
-  return days;
+  return result;
 };
 
 const getRecentOrders = async (from, to) => {

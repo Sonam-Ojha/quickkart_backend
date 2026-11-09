@@ -1,43 +1,66 @@
 const router     = require('express').Router();
 const otpService = require('../../services/otp.service');
 
+// In-memory rate limiter: max 5 send attempts per mobile/email per 15 minutes
+const rateLimitMap = new Map();
+const RATE_WINDOW_MS = 15 * 60 * 1000;
+const RATE_MAX = 5;
+
+function isRateLimited(key) {
+  const now = Date.now();
+  const record = rateLimitMap.get(key) || { count: 0, windowStart: now };
+  if (now - record.windowStart > RATE_WINDOW_MS) {
+    record.count = 0;
+    record.windowStart = now;
+  }
+  record.count += 1;
+  rateLimitMap.set(key, record);
+  // Prune expired entries to prevent unbounded memory growth
+  if (rateLimitMap.size > 10000) {
+    for (const [k, v] of rateLimitMap) {
+      if (now - v.windowStart > RATE_WINDOW_MS) rateLimitMap.delete(k);
+    }
+  }
+  return record.count > RATE_MAX;
+}
+
+const isDev = process.env.NODE_ENV !== 'production';
+
 // POST /api/app/otp/send
-// Body: { email: "user@gmail.com" } OR { mobile: "9876543210" }
 router.post('/send', async (req, res) => {
-  console.log(`\n[OTP ROUTE] POST /api/app/otp/send — body:`, req.body);
   try {
     const { email, mobile } = req.body;
 
     if (email) {
-      console.log(`[OTP ROUTE] Sending OTP via EMAIL to ${email}`);
+      if (isRateLimited(email)) {
+        return res.status(429).json({ message: 'Too many OTP requests. Try again in 15 minutes.' });
+      }
       const result = await otpService.sendOtpEmail(email);
-      console.log(`[OTP ROUTE] Email result:`, result);
-      return res.json({ success: true, channel: 'email' });
+      return res.json({ success: true, channel: 'email', devOtp: isDev && result.dev ? result.otp : undefined });
     }
 
     if (mobile) {
       if (!/^\d{10}$/.test(mobile)) {
-        console.log(`[OTP ROUTE] ❌ Invalid mobile: ${mobile}`);
         return res.status(400).json({ message: 'Valid 10-digit mobile number required' });
       }
-      console.log(`[OTP ROUTE] Sending OTP via SMS to ${mobile}`);
+      if (isRateLimited(mobile)) {
+        return res.status(429).json({ message: 'Too many OTP requests. Try again in 15 minutes.' });
+      }
       const result = await otpService.sendOtpSms(mobile);
-      console.log(`[OTP ROUTE] SMS result:`, result);
-      // No SMS plan yet: when the SMS wasn't actually delivered, hand the code
-      // back so the customer app can show it on screen. Remove once SMS is live.
-      return res.json({ success: true, channel: 'sms', devOtp: result.dev ? result.otp : undefined });
+      if (!result.success) {
+        return res.status(503).json({ message: 'SMS delivery failed. Please try again shortly.' });
+      }
+      return res.json({ success: true, channel: 'sms', devOtp: isDev && result.dev ? result.otp : undefined });
     }
 
-    console.log(`[OTP ROUTE] ❌ No email or mobile in body`);
     return res.status(400).json({ message: 'email or mobile is required' });
   } catch (err) {
-    console.log(`[OTP ROUTE] ❌ ERROR:`, err.message);
-    res.status(500).json({ message: err.message || 'Failed to send OTP' });
+    console.error('[OTP SEND ERROR]', err.message);
+    res.status(500).json({ message: 'Failed to send OTP' });
   }
 });
 
 // POST /api/app/otp/verify
-// Body: { key: "user@gmail.com or 9876543210", otp: "123456" }
 router.post('/verify', async (req, res) => {
   const { email, mobile, otp } = req.body;
   const key = email || mobile;

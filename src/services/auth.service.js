@@ -8,7 +8,8 @@ const register = async ({ name, email, password, role }) => {
   const existing = await User.findOne({ where: { email } });
   if (existing) throw new Error('Email already registered');
 
-  const assignedRole = VALID_ADMIN_ROLES.includes(role) ? role : 'super_admin';
+  if (!role || !VALID_ADMIN_ROLES.includes(role)) throw new Error(`Invalid role. Must be one of: ${VALID_ADMIN_ROLES.join(', ')}`);
+  const assignedRole = role;
   const hash = await bcrypt.hash(password, 10);
   const user = await User.create({ name, email, password: hash, role: assignedRole });
   return { id: user.id, name: user.name, email: user.email, role: user.role };
@@ -23,7 +24,7 @@ const login = async ({ email, password }) => {
 
   const token = jwt.sign(
     { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET || 'my-secret-key',
+    process.env.JWT_SECRET,
     { expiresIn: '7d' }
   );
 

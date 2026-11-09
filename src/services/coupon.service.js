@@ -22,8 +22,11 @@ const create = async (data) => {
 const update = async (id, data) => {
   const coupon = await Coupon.findByPk(id);
   if (!coupon) throw new Error('Coupon not found');
-  if (data.code) data.code = data.code.toUpperCase();
-  await coupon.update(data);
+  const { code, type, value, maxDiscount, minOrder, usageLimit, perUserLimit, validFrom, validTo, isActive } = data;
+  await coupon.update({
+    code: code ? code.toUpperCase() : undefined,
+    type, value, maxDiscount, minOrder, usageLimit, perUserLimit, validFrom, validTo, isActive,
+  });
   return coupon;
 };
 

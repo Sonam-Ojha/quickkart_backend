@@ -7,7 +7,7 @@ const authenticateRider = (req, res, next) => {
   }
   const token = authHeader.split(' ')[1];
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'my-secret-key');
+    const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     if (payload.role !== 'rider') {
       return res.status(403).json({ message: 'Rider access only' });
     }
@@ -27,7 +27,7 @@ const authenticateSignup = (req, res, next) => {
   }
   const token = authHeader.split(' ')[1];
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'my-secret-key');
+    const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     if (payload.role !== 'rider_signup') {
       return res.status(403).json({ message: 'Verify your mobile number first' });
     }

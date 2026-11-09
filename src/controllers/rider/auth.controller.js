@@ -5,7 +5,7 @@ const DarkStore        = require('../../models/darkstore.model');
 const otpService       = require('../../services/otp.service');
 const AccountDeletion  = require('../../models/account-deletion.model');
 
-const SECRET = process.env.JWT_SECRET || 'my-secret-key';
+const SECRET = process.env.JWT_SECRET;
 
 const VEHICLE_TYPES = ['bike', 'scooter', 'ebike', 'bicycle', 'cycle', 'other'];
 

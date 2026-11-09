@@ -23,7 +23,8 @@ const update = async (req, res) => {
   try {
     const faq = await Faq.findByPk(req.params.id);
     if (!faq) return res.status(404).json({ message: 'FAQ not found' });
-    await faq.update(req.body);
+    const { question, answer, page, sortOrder, isActive } = req.body;
+    await faq.update({ question, answer, page, sortOrder, isActive });
     return res.json(faq);
   } catch (err) { return res.status(500).json({ message: err.message }); }
 };

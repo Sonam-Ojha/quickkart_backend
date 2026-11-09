@@ -11,8 +11,10 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const ok  = /\.(jpeg|jpg|png|webp|pdf)$/.test(ext);
+    const ext    = path.extname(file.originalname).toLowerCase();
+    const okExt  = /\.(jpeg|jpg|png|webp|pdf)$/.test(ext);
+    const okMime = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.mimetype);
+    const ok     = okExt && okMime;
     cb(ok ? null : new Error('Only JPG, PNG, WEBP or PDF files are allowed'), ok);
   },
 });

@@ -39,14 +39,28 @@ const balanceOf = async (riderId) => {
 
 const summary = async (riderId) => {
   const rider = await Rider.findByPk(riderId, { attributes: ['rating', 'totalDeliveries', 'totalEarnings'] });
-  const [today, week, month] = await Promise.all([list(riderId, 'today'), list(riderId, 'week'), list(riderId, 'month')]);
+
+  // Single DB round-trip covers all three windows; filter in memory.
+  const monthRows = await RiderEarning.findAll({
+    where: { riderId, created_at: { [Op.gte]: startOf('month') } },
+    order: [['created_at', 'DESC'], ['id', 'DESC']],
+    limit: 200,
+  });
+
+  const todayStart = startOf('today');
+  const weekStart  = startOf('week');
+  const sumAmt     = (rows) => rows.reduce((s, r) => s + Number(r.amount), 0);
+
+  const todayRows = monthRows.filter(r => new Date(r.created_at) >= todayStart);
+  const weekRows  = monthRows.filter(r => new Date(r.created_at) >= weekStart);
+
   return {
     ...(await balanceOf(riderId)),
     rating:          rider?.rating ?? null,
     totalDeliveries: rider?.totalDeliveries ?? 0,
-    today: { total: today.total, count: today.count },
-    week:  { total: week.total,  count: week.count  },
-    month: { total: month.total, count: month.count },
+    today: { total: sumAmt(todayRows), count: todayRows.length },
+    week:  { total: sumAmt(weekRows),  count: weekRows.length  },
+    month: { total: sumAmt(monthRows), count: monthRows.length },
     minWithdrawal: MIN_WITHDRAWAL,
   };
 };

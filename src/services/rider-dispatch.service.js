@@ -159,6 +159,9 @@ const accept = async (riderId, orderId) => {
     });
     if (!offer) throw Object.assign(new Error('No live offer for this order'), { status: 409 });
 
+    const rider = await Rider.findByPk(riderId, { attributes: ['id', 'status'], transaction: t });
+    if (!rider || rider.status !== 'active') throw Object.assign(new Error('Your account is not active'), { status: 403 });
+
     const order = await Order.findByPk(orderId, { lock: t.LOCK.UPDATE, transaction: t });
     if (!order) throw Object.assign(new Error('Order not found'), { status: 404 });
     if (order.riderId) throw Object.assign(new Error('Another rider already took this order'), { status: 409 });
@@ -244,10 +247,18 @@ const sweep = async () => {
   const stranded = await findStranded();
   if (!stranded.length) return { checked: 0, redispatched: 0 };
 
+  // Pre-fetch all pending offer counts in one query instead of N separate COUNTs
+  const strandedIds  = stranded.map(o => o.id);
+  const liveOffers   = await RiderOrderOffer.findAll({
+    where: { orderId: { [Op.in]: strandedIds }, state: 'pending' },
+    attributes: ['orderId'],
+    raw: true,
+  });
+  const hasLiveOffer = new Set(liveOffers.map(r => r.orderId));
+
   let redispatched = 0;
   for (const o of stranded) {
-    const live = await RiderOrderOffer.count({ where: { orderId: o.id, state: 'pending' } });
-    if (live) continue;                       // still waiting on someone
+    if (hasLiveOffer.has(o.id)) continue;     // still waiting on someone
     const res = await offerOrder(o.id).catch(() => ({ offered: 0 }));
     if (res.offered) redispatched++;
   }

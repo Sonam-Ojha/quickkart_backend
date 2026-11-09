@@ -26,8 +26,11 @@ router.get('/', async (req, res) => {
     })();
 
     if (hours && hours.shifts && hours.shifts.length > 0) {
+      // Always evaluate against IST regardless of server timezone
       const now = new Date();
-      const mins = now.getHours() * 60 + now.getMinutes();
+      const istOffset = 5.5 * 60 * 60 * 1000;
+      const ist = new Date(now.getTime() + istOffset + now.getTimezoneOffset() * 60 * 1000);
+      const mins = ist.getHours() * 60 + ist.getMinutes();
 
       const toMins = (t) => {
         const [h, m] = t.split(':').map(Number);

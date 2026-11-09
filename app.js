@@ -1,5 +1,6 @@
 const express = require('express');
 const cors    = require('cors');
+const helmet  = require('helmet');
 const path    = require('path');
 const multer  = require('multer');
 
@@ -81,6 +82,7 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 

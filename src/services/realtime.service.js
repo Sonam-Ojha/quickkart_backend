@@ -13,15 +13,24 @@ const jwt = require('jsonwebtoken');
 
 let io = null;
 
-const SECRET = () => process.env.JWT_SECRET || 'my-secret-key';
+const SECRET = () => process.env.JWT_SECRET;
 
 const init = (httpServer) => {
-  io = new Server(httpServer, { cors: { origin: '*' } });
+  const allowedOrigins = new Set([
+    'https://jhatpats.com', 'https://www.jhatpats.com', 'https://admin.jhatpats.com',
+  ]);
+  const devOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+  io = new Server(httpServer, {
+    cors: {
+      origin: (origin, cb) => cb(null, !origin || devOrigin.test(origin) || allowedOrigins.has(origin)),
+      credentials: true,
+    },
+  });
 
   io.use((socket, next) => {
     const raw = socket.handshake.auth?.token || socket.handshake.query?.token || '';
     try {
-      const payload = jwt.verify(String(raw).replace(/^Bearer\s+/i, ''), SECRET());
+      const payload = jwt.verify(String(raw).replace(/^Bearer\s+/i, ''), SECRET(), { algorithms: ['HS256'] });
       if (payload.role === 'rider') socket.data.room = `rider:${payload.id}`;
       else if (payload.role === 'user') socket.data.room = `user:${payload.id}`;
       else return next(new Error('unsupported role'));

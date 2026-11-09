@@ -15,6 +15,10 @@ const WalletTransaction = sequelize.define('WalletTransaction', {
 }, {
   tableName: 'wallet_transactions',
   timestamps: false,
+  indexes: [
+    { fields: ['user_id'] },
+    { fields: ['created_at'] },
+  ],
 });
 
 const User = require('./user.model');

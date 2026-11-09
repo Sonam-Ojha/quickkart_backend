@@ -22,6 +22,10 @@ const Category = sequelize.define('Category', {
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['is_active'] },
+    { fields: ['parent_id'] },
+  ],
 });
 
 module.exports = Category;

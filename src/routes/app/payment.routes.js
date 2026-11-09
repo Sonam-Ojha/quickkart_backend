@@ -1,12 +1,14 @@
 const router  = require('express').Router();
 const crypto  = require('crypto');
 const Razorpay = require('razorpay');
+const { Op }        = require('sequelize');
 const Order         = require('../../models/order.model');
 const OrderItem     = require('../../models/order-item.model');
 const OrderTimeline = require('../../models/order-timeline.model');
 const Payment       = require('../../models/payment.model');
 const DarkStore     = require('../../models/darkstore.model');
 const Inventory     = require('../../models/inventory.model');
+const Product       = require('../../models/product.model');
 const User          = require('../../models/user.model');
 const Address       = require('../../models/address.model');
 const sequelize     = require('../../../src/config/db');
@@ -20,10 +22,25 @@ router.use(authenticateCustomer);
 // Creates a Razorpay order and returns key + order_id for frontend
 router.post('/razorpay/create', async (req, res) => {
   try {
-    const { amount, lat, lng } = req.body;
+    const { items, lat, lng } = req.body;
     if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
       return res.status(503).json({ message: 'Online payment not configured. Please use Cash on Delivery.' });
     }
+    if (!items || items.length === 0) {
+      return res.status(400).json({ message: 'No items provided' });
+    }
+    // Compute amount server-side — never trust the client-supplied amount.
+    const productIds = items.map(i => i.product_id ?? i.id);
+    const products   = await Product.findAll({ where: { id: { [Op.in]: productIds } }, attributes: ['id', 'price'] });
+    const priceMap   = Object.fromEntries(products.map(p => [p.id, Math.round(p.price / 100)]));
+    let subtotal = 0;
+    for (const item of items) {
+      const pid = item.product_id ?? item.id;
+      if (priceMap[pid] == null) return res.status(400).json({ message: `Product #${pid} not found` });
+      subtotal += priceMap[pid] * (item.qty ?? 1);
+    }
+    const computedTotal = subtotal + (subtotal >= 99 ? 0 : 25) + 5;
+
     // Refuse before the customer pays, not after.
     const { store, located } = await storeForDelivery(lat, lng);
     if (located && !store) return res.status(400).json({ message: NOT_SERVICEABLE });
@@ -32,7 +49,7 @@ router.post('/razorpay/create', async (req, res) => {
       key_secret: process.env.RAZORPAY_KEY_SECRET,
     });
     const order = await rzp.orders.create({
-      amount:   Math.round(amount * 100), // paise
+      amount:   Math.round(computedTotal * 100), // paise — server-computed, not client-supplied
       currency: 'INR',
       receipt:  `rcpt_${Date.now()}`,
     });
@@ -53,7 +70,7 @@ router.post('/razorpay/verify', async (req, res) => {
   try {
     const {
       razorpay_order_id, razorpay_payment_id, razorpay_signature,
-      items, delivery_fee = 0, handling_charge = 5, discount = 0, lat, lng, address_id,
+      items, lat, lng, address_id,
     } = req.body;
 
     // Verify signature
@@ -66,9 +83,23 @@ router.post('/razorpay/verify', async (req, res) => {
       return res.status(400).json({ message: 'Payment verification failed. Invalid signature.' });
     }
 
+    // ── Server-side price computation (same logic as COD path) ───────────────
+    const productIds = items.map(i => i.product_id ?? i.id);
+    const products   = await Product.findAll({ where: { id: { [Op.in]: productIds } }, attributes: ['id', 'price'], transaction: t });
+    // Product.price is in paise in the DB; convert to rupees.
+    const priceMap   = Object.fromEntries(products.map(p => [p.id, Math.round(p.price / 100)]));
+
     let subtotal = 0;
-    for (const item of items) subtotal += (item.price ?? 0) * (item.qty ?? 1);
-    const total = subtotal - Number(discount) + Number(delivery_fee) + Number(handling_charge);
+    for (const item of items) {
+      const pid = item.product_id ?? item.id;
+      const serverPrice = priceMap[pid];
+      if (serverPrice == null) throw Object.assign(new Error(`Product #${pid} not found`), { status: 400 });
+      subtotal += serverPrice * (item.qty ?? 1);
+    }
+
+    const delivery_fee_computed    = subtotal >= 99 ? 0 : 25;
+    const handling_charge_computed = 5;
+    const total = subtotal + delivery_fee_computed + handling_charge_computed;
 
     // Payment is already captured here, so if the location check somehow
     // fails now (it passed at /create) fall back to any active store rather
@@ -85,7 +116,6 @@ router.post('/razorpay/verify', async (req, res) => {
         lock: t.LOCK.UPDATE,
         transaction: t,
       });
-      // Products with no Inventory row aren't stock-tracked.
       if (inv && inv.stockQty < qty) {
         throw new Error(`Out of stock: product #${productId} (available: ${inv?.stockQty ?? 0}, requested: ${qty})`);
       }
@@ -95,10 +125,11 @@ router.post('/razorpay/verify', async (req, res) => {
     const address = address_id != null
       ? await Address.findOne({ where: { id: address_id, userId: req.user.id }, attributes: ['id'], transaction: t })
       : null;
+    if (address_id != null && !address) {
+      throw Object.assign(new Error('Delivery address not found'), { status: 400 });
+    }
 
-    // Same handover code as COD orders — without it the rider can't close
-    // the delivery.
-    const deliveryOtp = String(Math.floor(100000 + Math.random() * 900000));
+    const deliveryOtp = String(crypto.randomInt(100000, 1000000));
 
     const order = await Order.create({
       customerId:  req.user.id,
@@ -107,19 +138,18 @@ router.post('/razorpay/verify', async (req, res) => {
       deliveryOtp,
       status:      'confirmed',
       subtotal,
-      deliveryFee: Number(delivery_fee),
-      discount:    Number(discount),
+      deliveryFee: delivery_fee_computed,
+      discount:    0,
       total,
     }, { transaction: t });
 
     await OrderItem.bulkCreate(
-      items.map(i => ({
-        orderId:   order.id,
-        productId: i.product_id ?? i.id,
-        quantity:  i.qty ?? 1,
-        unitPrice: i.price,
-        total:     (i.price ?? 0) * (i.qty ?? 1),
-      })),
+      items.map(i => {
+        const pid   = i.product_id ?? i.id;
+        const price = priceMap[pid];
+        const qty   = i.qty ?? 1;
+        return { orderId: order.id, productId: pid, quantity: qty, unitPrice: price, total: price * qty };
+      }),
       { transaction: t },
     );
 

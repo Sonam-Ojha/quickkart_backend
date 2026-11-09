@@ -4,7 +4,7 @@ const { authenticateCustomer } = require('../../middlewares/customer.middleware'
 
 router.post('/register',       ctrl.register);
 router.post('/login',          ctrl.login);
-router.post('/refresh',        ctrl.refresh);
+router.post('/refresh',        authenticateCustomer, ctrl.refresh);
 router.post('/otp-login',      ctrl.otpLogin);
 router.delete('/account',      authenticateCustomer, ctrl.deleteAccount);
 

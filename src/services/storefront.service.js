@@ -25,15 +25,30 @@ async function resolveStorefront(lat, lng) {
 //   hidden — product ids switched OFF for this store (visibility defaults to ON)
 //   stock  — productId → stockQty for products whose stock the store tracks in
 //            Inventory. Untracked products are always orderable.
+const _catalogCache = new Map(); // storeId → { data, at }
+const CATALOG_TTL   = 30_000;   // 30 s — invalidated by invalidateCatalogCache()
+
 async function storeCatalog(storeId) {
   if (!storeId) return { storeId: null, hidden: [], stock: {} };
+  const cached = _catalogCache.get(storeId);
+  if (cached && Date.now() - cached.at < CATALOG_TTL) return cached.data;
+
   const [off, inv] = await Promise.all([
     ProductStoreVisibility.findAll({ where: { storeId, isEnabled: false }, attributes: ['productId'] }),
     Inventory.findAll({ where: { storeId }, attributes: ['productId', 'stockQty'] }),
   ]);
   const stock = {};
   for (const r of inv) stock[r.productId] = r.stockQty;
-  return { storeId, hidden: off.map(r => r.productId), stock };
+  const data = { storeId, hidden: off.map(r => r.productId), stock };
+  _catalogCache.set(storeId, { data, at: Date.now() });
+  return data;
+}
+
+// Call this after any admin inventory / visibility change so the next request
+// gets fresh data instead of stale cache.
+function invalidateCatalogCache(storeId) {
+  if (storeId) _catalogCache.delete(storeId);
+  else         _catalogCache.clear();
 }
 
 // Drops the store's switched-off products from a Product `where` clause.
@@ -78,4 +93,4 @@ async function storeForDelivery(lat, lng) {
 
 const NOT_SERVICEABLE = 'Delivery is not available at this address yet. Please choose a different address.';
 
-module.exports = { resolveStorefront, storeCatalog, scopeToStore, formatProduct, storeForDelivery, NOT_SERVICEABLE };
+module.exports = { resolveStorefront, storeCatalog, invalidateCatalogCache, scopeToStore, formatProduct, storeForDelivery, NOT_SERVICEABLE };

@@ -1,6 +1,11 @@
 // Load .env only in local dev; production uses hosting panel env vars
 try { require('dotenv').config(); } catch (_) {}
 
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+  console.error('[FATAL] JWT_SECRET env var is missing or too short (min 32 chars). Set it and restart.');
+  process.exit(1);
+}
+
 process.on('uncaughtException', (err) => {
   console.error('[FATAL] uncaughtException:', err.message, err.stack);
   // Don't exit — let the process keep running so live traffic isn't dropped

@@ -71,10 +71,13 @@ const bulkUpdateCategories = async (payload) => {
   const sequelize = Category.sequelize;
 
   if (payload.updates && Array.isArray(payload.updates)) {
-    // Per-row update
-    const results = await Promise.all(
+    // Pre-fetch all in one query, then update — eliminates N findByPk round-trips
+    const updateIds = payload.updates.map(u => u.id);
+    const existing  = await Category.findAll({ where: { id: { [Op.in]: updateIds } } });
+    const catMap    = new Map(existing.map(c => [c.id, c]));
+    const results   = await Promise.all(
       payload.updates.map(async ({ id, ...fields }) => {
-        const cat = await Category.findByPk(id);
+        const cat = catMap.get(id);
         if (!cat) return null;
         await cat.update(fields);
         return cat;
@@ -107,22 +110,32 @@ const bulkDeleteCategories = async (ids) => {
   const cats = await Category.findAll({ where: { id: { [Op.in]: ids }, isArchived: false } });
   cats.sort((a, b) => (b.parentId ? 1 : 0) - (a.parentId ? 1 : 0));
 
+  // Pre-aggregate all counts in 4 queries instead of 4 per category
+  const [liveProductRows, liveChildRows, allProductRows, allChildRows] = await Promise.all([
+    Product.count({ where: { categoryId: { [Op.in]: ids }, isArchived: false }, group: ['category_id'] }),
+    Category.count({ where: { parentId: { [Op.in]: ids }, isArchived: false }, group: ['parent_id'] }),
+    Product.count({ where: { categoryId: { [Op.in]: ids } }, group: ['category_id'] }),
+    Category.count({ where: { parentId: { [Op.in]: ids } }, group: ['parent_id'] }),
+  ]);
+  const liveProductMap = new Map(liveProductRows.map(r => [r.category_id, Number(r.count)]));
+  const liveChildMap   = new Map(liveChildRows.map(r =>   [r.parent_id,   Number(r.count)]));
+  const allProductMap  = new Map(allProductRows.map(r =>  [r.category_id, Number(r.count)]));
+  const allChildMap    = new Map(allChildRows.map(r =>    [r.parent_id,   Number(r.count)]));
+
   let deleted = 0, archived = 0;
   const skipped = [];
   for (const cat of cats) {
-    const liveProducts = await Product.count({ where: { categoryId: cat.id, isArchived: false } });
+    const liveProducts = liveProductMap.get(cat.id) ?? 0;
     if (liveProducts > 0) {
       skipped.push({ id: cat.id, name: cat.name, reason: `${liveProducts} product${liveProducts === 1 ? '' : 's'} still in "${cat.name}" — delete or move them first` });
       continue;
     }
-    const liveChildren = await Category.count({ where: { parentId: cat.id, isArchived: false } });
+    const liveChildren = liveChildMap.get(cat.id) ?? 0;
     if (liveChildren > 0) {
       skipped.push({ id: cat.id, name: cat.name, reason: `"${cat.name}" still has ${liveChildren} sub-categor${liveChildren === 1 ? 'y' : 'ies'} — delete them first` });
       continue;
     }
-    const stillReferenced =
-      await Product.count({ where: { categoryId: cat.id } }) +
-      await Category.count({ where: { parentId: cat.id } });
+    const stillReferenced = (allProductMap.get(cat.id) ?? 0) + (allChildMap.get(cat.id) ?? 0);
     if (stillReferenced > 0) {
       await cat.update({ isActive: false, isArchived: true });
       archived++;
@@ -209,9 +222,13 @@ const bulkCreateProducts = async (rows) => {
 
 const bulkUpdateProducts = async (payload) => {
   if (payload.updates && Array.isArray(payload.updates)) {
-    const results = await Promise.all(
+    // Pre-fetch all in one query, then update — eliminates N findByPk round-trips
+    const updateIds = payload.updates.map(u => u.id);
+    const existing  = await Product.findAll({ where: { id: { [Op.in]: updateIds } } });
+    const prodMap   = new Map(existing.map(p => [p.id, p]));
+    const results   = await Promise.all(
       payload.updates.map(async ({ id, ...fields }) => {
-        const p = await Product.findByPk(id);
+        const p = prodMap.get(id);
         if (!p) return null;
         await p.update(fields);
         return p;

@@ -23,6 +23,9 @@ const User = sequelize.define('User', {
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['role'] },
+  ],
 });
 
 module.exports = User;

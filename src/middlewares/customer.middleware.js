@@ -8,7 +8,7 @@ const authenticateCustomer = (req, res, next) => {
 
   const token = header.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'my-secret-key');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 
     // Customer tokens must have role 'user'
     if (decoded.role !== 'user') {
@@ -28,7 +28,7 @@ const optionalAuth = (req, res, next) => {
 
   try {
     const token   = header.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'my-secret-key');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     req.user = decoded;
   } catch {
     // ignore — browsing without auth is allowed

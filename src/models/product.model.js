@@ -33,6 +33,10 @@ const Product = sequelize.define('Product', {
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['category_id', 'is_active'] },
+    { fields: ['is_active'] },
+  ],
 });
 
 // Association — loaded after both models are defined

@@ -61,6 +61,13 @@ const Order = sequelize.define('Order', {
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['customer_id'] },
+    { fields: ['rider_id'] },
+    { fields: ['store_id'] },
+    { fields: ['status'] },
+    { fields: ['created_at'] },
+  ],
 });
 
 const User      = require('./user.model');

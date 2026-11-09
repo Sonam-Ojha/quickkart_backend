@@ -21,8 +21,8 @@ const getHistory = async (req, res) => {
     const { rows, count } = await WalletTransaction.findAndCountAll({
       where: { user_id: req.user.id },
       order: [['created_at', 'DESC']],
-      limit: Number(limit),
-      offset: Number(offset),
+      limit:  Math.min(Math.max(Number(limit)  || 20, 1), 100),
+      offset: Math.max(Number(offset) || 0, 0),
     });
     return res.json({ transactions: rows, total: count });
   } catch (err) {

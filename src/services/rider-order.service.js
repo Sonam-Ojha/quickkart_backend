@@ -84,8 +84,8 @@ const setItemPicked = async (riderId, orderId, itemId, picked) => {
   if (!item) throw fail('Order item not found', 404);
   await item.update({ picked: !!picked });
 
-  const items = await OrderItem.findAll({ where: { orderId } });
-  return { item, allPicked: items.every(i => i.picked) };
+  const unpicked = await OrderItem.count({ where: { orderId, picked: false } });
+  return { item, allPicked: unpicked === 0 };
 };
 
 const confirmPickup = async (riderId, orderId) => {
@@ -120,6 +120,10 @@ const deliver = async (riderId, orderId, { otp, codCollected = false }) => {
   const tip       = Number(order.riderTip)       || 0;
   const amount    = fee + incentive + tip;
 
+  // Pre-load outside the transaction — no write dependency, no lock needed
+  const address  = order.addressId ? await Address.findByPk(order.addressId) : null;
+  const dropArea = address ? [address.line2, address.city].filter(Boolean).join(', ') : null;
+
   await sequelize.transaction(async (t) => {
     await order.update({
       status: 'delivered', riderStage: 'delivered',
@@ -132,9 +136,6 @@ const deliver = async (riderId, orderId, { otp, codCollected = false }) => {
     );
 
     if (isCod) await payment.update({ status: 'paid' }, { transaction: t });
-
-    const address  = order.addressId ? await Address.findByPk(order.addressId, { transaction: t }) : null;
-    const dropArea = address ? [address.line2, address.city].filter(Boolean).join(', ') : null;
 
     await earningsSvc.creditEarning(
       riderId, { orderId, type: 'delivery', fee, incentive, tip, amount, dropArea }, t,

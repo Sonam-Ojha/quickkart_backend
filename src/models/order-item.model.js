@@ -13,6 +13,10 @@ const OrderItem = sequelize.define('OrderItem', {
 }, {
   tableName: 'order_items',
   timestamps: false,
+  indexes: [
+    { fields: ['order_id'] },
+    { fields: ['product_id'] },
+  ],
 });
 
 const Order   = require('./order.model');

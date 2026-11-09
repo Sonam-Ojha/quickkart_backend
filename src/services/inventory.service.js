@@ -2,13 +2,18 @@ const { Op } = require('sequelize');
 const Inventory = require('../models/inventory.model');
 const Product   = require('../models/product.model');
 const Category  = require('../models/category.model');
+const { invalidateCatalogCache } = require('./storefront.service');
 
 const getByStore = async (storeId, { search, lowStock } = {}) => {
   const productWhere = {};
   if (search) productWhere.name = { [Op.like]: `%${search}%` };
 
-  const rows = await Inventory.findAll({
-    where: { storeId },
+  // Push lowStock filter into SQL — avoids loading full store inventory into JS
+  const inventoryWhere = { storeId };
+  if (lowStock === 'true') inventoryWhere.stockQty = { [Op.lt]: 10 };
+
+  return Inventory.findAll({
+    where: inventoryWhere,
     include: [{
       model: Product,
       as: 'product',
@@ -17,9 +22,6 @@ const getByStore = async (storeId, { search, lowStock } = {}) => {
     }],
     order: [[{ model: Product, as: 'product' }, 'name', 'ASC']],
   });
-
-  if (lowStock === 'true') return rows.filter(r => r.stockQty < 10);
-  return rows;
 };
 
 const upsert = async (storeId, productId, stockQty) => {
@@ -28,6 +30,7 @@ const upsert = async (storeId, productId, stockQty) => {
     defaults: { stockQty },
   });
   if (!created) await row.update({ stockQty });
+  invalidateCatalogCache(storeId);
   return row;
 };
 
@@ -36,6 +39,7 @@ const adjust = async (storeId, productId, delta) => {
   if (!row) throw new Error('Inventory entry not found');
   const newQty = Math.max(0, row.stockQty + delta);
   await row.update({ stockQty: newQty });
+  invalidateCatalogCache(storeId);
   return row;
 };
 
@@ -43,6 +47,7 @@ const remove = async (storeId, productId) => {
   const row = await Inventory.findOne({ where: { storeId, productId } });
   if (!row) throw new Error('Inventory entry not found');
   await row.destroy();
+  invalidateCatalogCache(storeId);
 };
 
 const getByProduct = async (productId) => {

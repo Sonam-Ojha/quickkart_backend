@@ -8,7 +8,7 @@ const otpService       = require('../../services/otp.service');
 const signToken = (user) =>
   jwt.sign(
     { id: user.id, role: user.role, mobile: user.mobile },
-    process.env.JWT_SECRET || 'my-secret-key',
+    process.env.JWT_SECRET,
     { expiresIn: '30d' },
   );
 
@@ -67,6 +67,7 @@ const login = async (req, res) => {
 
     const user = await User.findOne({ where });
     if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!user.isActive) return res.status(403).json({ message: 'Your account has been suspended. Please contact support.' });
 
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).json({ message: 'Invalid credentials' });
@@ -88,7 +89,7 @@ const login = async (req, res) => {
 
 const refresh = async (req, res) => {
   try {
-    const user = await User.findByPk(req.body.userId);
+    const user = await User.findByPk(req.user.id);
     if (!user || user.role !== 'user') return res.status(401).json({ message: 'Invalid' });
     return res.json({ token: signToken(user) });
   } catch (err) {
@@ -116,6 +117,10 @@ const otpLogin = async (req, res) => {
     const where = mobile ? { mobile } : { email };
     let user = await User.findOne({ where });
     let isNewUser = false;
+
+    if (user && !user.isActive) {
+      return res.status(403).json({ message: 'Your account has been suspended. Please contact support.' });
+    }
 
     if (!user) {
       isNewUser = true;
