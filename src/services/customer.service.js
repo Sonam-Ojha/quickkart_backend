@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const User = require('../models/user.model');
+const AccountDeletion = require('../models/account-deletion.model');
 
 const listCustomers = async ({ search, status, page = 1, limit = 20 } = {}) => {
   page  = parseInt(page)  || 1;
@@ -24,10 +25,26 @@ const listCustomers = async ({ search, status, page = 1, limit = 20 } = {}) => {
     attributes: ['id', 'name', 'email', 'mobile', 'avatar', 'walletBalance', 'referralCode', 'isActive', 'created_at'],
     order: [['created_at', 'DESC']],
     limit,
-    offset: (page - 1) * limit,
+    offset,
   });
 
-  return { customers: rows, total: count, page: Number(page), pages: Math.ceil(count / limit) };
+  // Fetch deletion requests for this page of customers in one query
+  const userIds = rows.map(r => r.id);
+  const deletions = userIds.length
+    ? await AccountDeletion.findAll({
+        where: { userId: { [Op.in]: userIds }, userType: 'customer' },
+        attributes: ['userId', 'status'],
+      })
+    : [];
+  const deletionMap = new Map(deletions.map(d => [d.userId, d.status]));
+
+  const customers = rows.map(r => ({
+    ...r.toJSON(),
+    hasDeletionRequest: deletionMap.has(r.id),
+    deletionStatus: deletionMap.get(r.id) ?? null,
+  }));
+
+  return { customers, total: count, page: Number(page), pages: Math.ceil(count / limit) };
 };
 
 const getCustomer = async (id) => {

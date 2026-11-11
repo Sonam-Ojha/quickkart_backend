@@ -7,14 +7,24 @@ const DEFAULTS = {
   company_address:  'Noida, Uttar Pradesh',
   copyright_text:   '© 2026 Jhatpats Technologies Pvt. Ltd. All rights reserved.',
   footer_badge:     '10-minute delivery · 30,000+ products',
-  delivery_fee:            '30',
-  free_delivery_threshold: '99',
-  handling_charge:         '5',
+  delivery_fee:            '35',
+  free_delivery_threshold: '100',
+  handling_charge:         '10',
   max_delivery_radius:     '10',
   otp_length:              '6',
   otp_expiry:              '300',
   max_otp_attempts:        '5',
   app_version_min:         '1.0.0',
+  // Charges tab
+  charge_platform_fee_enabled:   '1',  charge_platform_fee_amount:   '3',
+  charge_handling_fee_enabled:   '1',  charge_handling_fee_amount:   '10',
+  charge_small_cart_enabled:     '1',  charge_small_cart_amount:     '15',  charge_small_cart_threshold: '100',
+  charge_distance_fee_enabled:   '0',  charge_distance_fee_amount:   '10',
+  charge_rain_fee_enabled:       '0',  charge_rain_fee_amount:       '10',
+  charge_surge_fee_enabled:      '0',  charge_surge_fee_amount:      '10',
+  charge_late_night_enabled:     '0',  charge_late_night_amount:     '10',
+  charge_packaging_fee_enabled:  '0',  charge_packaging_fee_amount:  '5',
+  charge_cod_fee_enabled:        '0',  charge_cod_fee_amount:        '5',
 };
 
 // GET /api/admin/settings

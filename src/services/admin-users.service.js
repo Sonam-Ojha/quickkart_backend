@@ -11,14 +11,16 @@ const listAdminUsers = () =>
     order: [['created_at', 'DESC']],
   });
 
-const inviteAdmin = async ({ name, email, role }) => {
+const inviteAdmin = async ({ name, email, role, password }) => {
   if (!name || !email || !role) throw new Error('name, email and role are required');
   if (!ADMIN_ROLES.includes(role)) throw new Error('Invalid role');
 
   const existing = await User.findOne({ where: { email } });
   if (existing) throw new Error('Email already registered');
 
-  const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase();
+  const tempPassword = password && password.length >= 6
+    ? password
+    : Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase();
   const hashed = await bcrypt.hash(tempPassword, 10);
 
   const user = await User.create({ name, email, password: hashed, role });
