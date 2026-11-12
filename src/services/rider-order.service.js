@@ -6,6 +6,8 @@ const Payment           = require('../models/payment.model');
 const Product           = require('../models/product.model');
 const User              = require('../models/user.model');
 const DarkStore         = require('../models/darkstore.model');
+const Restaurant        = require('../models/restaurant.model');
+const { riderOrderView, RESTAURANT_PICKUP_ATTRS } = require('./food-order.service');
 const Address           = require('../models/address.model');
 const Rider             = require('../models/rider.model');
 const RiderNotification = require('../models/rider-notification.model');
@@ -30,6 +32,7 @@ const DETAIL_INCLUDE = [
   { model: Address,   as: 'address',  attributes: ['id', 'label', 'line1', 'line2', 'city', 'pincode', 'lat', 'lng'], required: false },
   { model: OrderItem, as: 'items', include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'imageUrl'] }] },
   { model: Payment,   as: 'payment', attributes: ['gateway', 'status'], required: false },
+  { model: Restaurant, as: 'restaurant', attributes: RESTAURANT_PICKUP_ATTRS, required: false },
 ];
 
 const fail = (message, status) => Object.assign(new Error(message), { status });
@@ -51,7 +54,7 @@ const getDetail = async (riderId, orderId) => {
     attributes: { exclude: ['deliveryOtp'] },
   });
   if (!order) throw fail('Order not found', 404);
-  return order;
+  return riderOrderView(order);
 };
 
 const step = async (riderId, orderId, action, note) => {

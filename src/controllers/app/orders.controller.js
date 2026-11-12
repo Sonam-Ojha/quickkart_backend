@@ -7,6 +7,7 @@ const DarkStore     = require('../../models/darkstore.model');
 const Inventory     = require('../../models/inventory.model');
 const Rider         = require('../../models/rider.model');
 const Address       = require('../../models/address.model');
+const Restaurant    = require('../../models/restaurant.model');
 const User          = require('../../models/user.model');
 const Coupon        = require('../../models/coupon.model');
 const CouponUsage   = require('../../models/coupon-usage.model');
@@ -20,7 +21,11 @@ const list = async (req, res) => {
   try {
     const orders = await Order.findAll({
       where: { customerId: req.user.id },
-      include: [{ model: OrderItem, as: 'items', include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'imageUrl'] }] }],
+      include: [
+        { model: OrderItem, as: 'items', include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'imageUrl'] }] },
+        // Food orders: which restaurant (items carry itemName instead of a product)
+        { model: Restaurant, as: 'restaurant', attributes: ['id', 'name', 'imageUrl'], required: false },
+      ],
       order: [['created_at', 'DESC']],
       limit: 100,
     });
@@ -256,6 +261,7 @@ const getById = async (req, res) => {
       where: { id: req.params.id, customerId: req.user.id },
       include: [
         { model: OrderItem, as: 'items', include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'image_url', 'unit'] }] },
+        { model: Restaurant, as: 'restaurant', attributes: ['id', 'name', 'imageUrl'], required: false },
         { model: OrderTimeline, as: 'timeline' },
         { model: Rider, as: 'rider', attributes: ['id', 'name', 'mobile', 'vehicleType', 'vehicleNumber', 'rating', 'currentLat', 'currentLng', 'locationUpdatedAt'], required: false },
         { model: Address, as: 'address', attributes: ['id', 'label', 'line1', 'line2', 'city', 'pincode', 'lat', 'lng'], required: false },

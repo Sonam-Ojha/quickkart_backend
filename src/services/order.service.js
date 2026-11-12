@@ -8,18 +8,21 @@ const DarkStore     = require('../models/darkstore.model');
 const Rider         = require('../models/rider.model');
 const Product       = require('../models/product.model');
 const Address       = require('../models/address.model');
+const Restaurant    = require('../models/restaurant.model');
 
 const CUSTOMER_ATTRS = ['id', 'name', 'email', 'mobile'];
 const STORE_ATTRS    = ['id', 'name', 'city'];
 const RIDER_ATTRS    = ['id', 'name', 'mobile', 'rating'];
 const PRODUCT_ATTRS  = ['id', 'name', 'imageUrl'];
+const RESTAURANT_ATTRS = ['id', 'name', 'phone', 'address', 'lat', 'lng'];
+const ORDER_TYPES    = ['grocery', 'print', 'food'];
 
 const list = async ({ status, type, search, page = 1, limit = 15 } = {}) => {
   page  = parseInt(page)  || 1;
   limit = parseInt(limit) || 15;
   const where = {};
   if (status && status !== 'all') where.status = status;
-  if (type === 'print' || type === 'grocery') where.orderType = type;
+  if (ORDER_TYPES.includes(type)) where.orderType = type;
 
   // Push search into the SQL query so pagination metadata is correct
   const customerWhere = {};
@@ -44,6 +47,7 @@ const list = async ({ status, type, search, page = 1, limit = 15 } = {}) => {
       { model: User,      as: 'customer', attributes: CUSTOMER_ATTRS, where: Object.keys(customerWhere).length ? customerWhere : undefined, required: Object.keys(customerWhere).length > 0 },
       { model: DarkStore, as: 'store',    attributes: STORE_ATTRS },
       { model: Rider,     as: 'rider',    attributes: RIDER_ATTRS, required: false },
+      { model: Restaurant, as: 'restaurant', attributes: RESTAURANT_ATTRS, required: false },
     ],
     order: [['created_at', 'DESC']],
     limit: Number(limit),
@@ -60,6 +64,7 @@ const getById = async (id) => {
       { model: User,      as: 'customer', attributes: CUSTOMER_ATTRS },
       { model: DarkStore, as: 'store',    attributes: STORE_ATTRS },
       { model: Rider,     as: 'rider',    attributes: RIDER_ATTRS, required: false },
+      { model: Restaurant, as: 'restaurant', attributes: RESTAURANT_ATTRS, required: false },
       {
         model: OrderItem, as: 'items',
         include: [{ model: Product, as: 'product', attributes: PRODUCT_ATTRS }],
@@ -93,12 +98,18 @@ const updateStatus = async (id, status, note) => {
   notifyOrderStatus(order, status).catch(() => {});
   require('./realtime.service').orderChanged(order);
   if (status === 'cancelled') require('./rider-dispatch.service').withdrawOffers(order.id).catch(() => {});
+  // Food orders wait for ops to confirm with the restaurant; that is when a
+  // rider is sent (the sweeper would also pick it up on its next pass).
+  if (order.orderType === 'food' && status === 'confirmed' && !order.riderId) {
+    require('./rider-dispatch.service').offerOrder(order.id)
+      .catch(err => console.error('[dispatch] food confirm:', err.message));
+  }
   return order;
 };
 
 const getStats = async ({ type } = {}) => {
   const sequelize = require('../config/db');
-  const typeClause = (type === 'print' || type === 'grocery') ? 'AND order_type = :orderType' : '';
+  const typeClause = ORDER_TYPES.includes(type) ? 'AND order_type = :orderType' : '';
   const [row] = await sequelize.query(
     `SELECT
        COUNT(*)                                                                    AS total,

@@ -25,8 +25,12 @@ const Order = sequelize.define('Order', {
   //   { files: [{ name, url, key, pages }], color: 'bw'|'color',
   //     paper: 'A4'|'A3'|'Letter', sides: 'single'|'double', copies,
   //     totalPages, ratePerPage }
-  orderType:    { type: DataTypes.ENUM('grocery', 'print'), defaultValue: 'grocery', allowNull: false, field: 'order_type' },
+  orderType:    { type: DataTypes.ENUM('grocery', 'print', 'food'), defaultValue: 'grocery', allowNull: false, field: 'order_type' },
   printJob:     { type: DataTypes.JSON, allowNull: true, field: 'print_job' },
+  // ── Food orders ───────────────────────────────────────────────────────
+  // One restaurant per order; the rider picks up from it instead of the store.
+  // storeId stays the serving area's store (dispatch + reporting use it).
+  restaurantId: { type: DataTypes.INTEGER, allowNull: true, field: 'restaurant_id', references: { model: 'restaurants', key: 'id' } },
 
   // ── Rider delivery flow ───────────────────────────────────────────────
   // `status` above stays the shared lifecycle (customer app + admin panel
@@ -74,7 +78,9 @@ const User      = require('./user.model');
 const DarkStore = require('./darkstore.model');
 const Rider     = require('./rider.model');
 const Address   = require('./address.model');
+const Restaurant = require('./restaurant.model');
 Order.belongsTo(User,      { foreignKey: 'customerId', as: 'customer' });
+Order.belongsTo(Restaurant, { foreignKey: 'restaurantId', as: 'restaurant' });
 Order.belongsTo(DarkStore, { foreignKey: 'storeId',    as: 'store' });
 Order.belongsTo(Rider,     { foreignKey: 'riderId',    as: 'rider' });
 Order.belongsTo(Address,   { foreignKey: 'addressId',  as: 'address' });

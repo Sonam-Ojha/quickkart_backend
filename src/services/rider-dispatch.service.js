@@ -10,6 +10,8 @@ const Product         = require('../models/product.model');
 const Payment         = require('../models/payment.model');
 const User            = require('../models/user.model');
 const DarkStore       = require('../models/darkstore.model');
+const Restaurant      = require('../models/restaurant.model');
+const { riderOrderView, RESTAURANT_PICKUP_ATTRS } = require('./food-order.service');
 const Address         = require('../models/address.model');
 const Rider           = require('../models/rider.model');
 const RiderOrderOffer = require('../models/rider-order-offer.model');
@@ -36,6 +38,7 @@ const OFFER_INCLUDE = [
     { model: Address,   as: 'address',  attributes: ['id', 'label', 'line1', 'line2', 'city', 'pincode', 'lat', 'lng'], required: false },
     { model: OrderItem, as: 'items', include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'imageUrl'] }] },
     { model: Payment,   as: 'payment', attributes: ['gateway', 'status'], required: false },
+    { model: Restaurant, as: 'restaurant', attributes: RESTAURANT_PICKUP_ATTRS, required: false },
   ]},
 ];
 
@@ -121,7 +124,7 @@ const offerOrder = async (orderId) => {
   const addr    = order.address;
   const dropLine = addr ? [addr.line1, addr.city].filter(Boolean).join(', ') : 'Customer location';
   const store   = order.store;
-  const items   = (order.items ?? []).map(i => i.product?.name).filter(Boolean);
+  const items   = (order.items ?? []).map(i => i.product?.name ?? i.itemName).filter(Boolean);
   const itemsText = items.length ? items.slice(0, 3).join(', ') + (items.length > 3 ? ` +${items.length - 3} more` : '') : `${order.items?.length ?? '?'} items`;
 
   // Live card for riders with the app open; push + SMS for everyone else.
@@ -140,11 +143,13 @@ const offerOrder = async (orderId) => {
 
 const listPending = async (riderId) => {
   await expireStale(riderId);
-  return RiderOrderOffer.findAll({
+  const offers = await RiderOrderOffer.findAll({
     where: { riderId, state: 'pending' },
     include: OFFER_INCLUDE,
     order: [['created_at', 'DESC']],
   });
+  // Food orders: pickup is the restaurant, not the store
+  return offers.map(o => { const j = o.toJSON(); j.order = riderOrderView(j.order); return j; });
 };
 
 // First rider to accept wins. The row-level lock plus the riderId re-check

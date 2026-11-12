@@ -22,9 +22,15 @@ const resolveSection = async (parentId, section) => {
   return SECTIONS.includes(section) ? section : 'grocery';
 };
 
-const createCategory = async ({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid, section }) => {
+// Blank group names are stored as null so "no group" has one representation.
+const normalizeGroup = (groupName) => {
+  const g = typeof groupName === 'string' ? groupName.trim() : '';
+  return g ? g.slice(0, 60) : null;
+};
+
+const createCategory = async ({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid, section, groupName }) => {
   const resolved = await resolveSection(parentId, section);
-  return Category.create({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid, section: resolved });
+  return Category.create({ name, parentId, icon, imageUrl, sortOrder, isActive, showInFilter, showInGrid, section: resolved, groupName: normalizeGroup(groupName) });
 };
 
 const updateCategory = async (id, data) => {
@@ -32,6 +38,7 @@ const updateCategory = async (id, data) => {
   if (!cat) throw new Error('Category not found');
   const parentId = data.parentId !== undefined ? data.parentId : cat.parentId;
   const section = await resolveSection(parentId, data.section ?? cat.section);
+  if (data.groupName !== undefined) data = { ...data, groupName: normalizeGroup(data.groupName) };
   await cat.update({ ...data, section });
   // Keep the subtree in the same section when a main category moves.
   if (!parentId) await Category.update({ section }, { where: { parentId: cat.id } });

@@ -6,6 +6,10 @@ const Banner = sequelize.define('Banner', {
   title:       { type: DataTypes.STRING(120), allowNull: true },
   subtitle:    { type: DataTypes.STRING(255), allowNull: true },
   bannerImage: { type: DataTypes.STRING(500), allowNull: false, field: 'banner_image' },
+  // Optional phone-shaped artwork (12:5); phones fall back to bannerImage.
+  mobileImage: { type: DataTypes.STRING(500), allowNull: true, field: 'mobile_image' },
+  // Where the banner is shown: customer website, mobile app, or both.
+  platform:    { type: DataTypes.ENUM('both', 'web', 'app'), allowNull: false, defaultValue: 'both' },
   section:     { type: DataTypes.ENUM('hero', 'promo'), defaultValue: 'hero' },
   emoji:       { type: DataTypes.STRING(20), allowNull: true },
   bgType: {

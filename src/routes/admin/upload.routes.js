@@ -32,9 +32,13 @@ router.post('/', authenticate, requireAdmin, (req, res, next) => {
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
   const scope = req.body.productId || 'general';
+  // Full-width banners span ~3000 device px on retina desktops; keep them sharp.
+  const isBanner = req.body.purpose === 'banner';
+  const maxSide  = isBanner ? 3600 : undefined;
+  const quality  = isBanner ? 90 : undefined;
 
   try {
-    const { url, key } = await s3.uploadImage(req.file.buffer, scope);
+    const { url, key } = await s3.uploadImage(req.file.buffer, scope, maxSide, quality);
     return res.json({ url, key });
   } catch (err) {
     console.error('[upload] image upload failed:', err);

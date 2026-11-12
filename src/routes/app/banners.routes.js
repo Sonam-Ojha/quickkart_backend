@@ -10,11 +10,13 @@ const BG_HEX = {
   'purple-tint':  '#6D28D9',
 };
 
-// GET /api/app/banners?section=hero|promo  — public, no auth
+// GET /api/app/banners?section=hero|promo&platform=web|app  — public, no auth
+// No platform → every banner (older app builds that don't send it).
 router.get('/', async (req, res) => {
   try {
     const where = { isActive: true };
     if (req.query.section) where.section = req.query.section;
+    if (['web', 'app'].includes(req.query.platform)) where.platform = [req.query.platform, 'both'];
 
     const rows = await Banner.findAll({
       where,
@@ -27,6 +29,7 @@ router.get('/', async (req, res) => {
       title:    b.title,
       subtitle: b.subtitle ?? '',
       img:      b.bannerImage,
+      mobileImg: b.mobileImage || null,
       section:  b.section,
       emoji:    b.emoji ?? '',
       bgType:   b.bgType,

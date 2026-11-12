@@ -14,6 +14,9 @@ const Category = sequelize.define('Category', {
   // Which app tab the category belongs to: 'grocery' → Category tab, 'fresh' → Fresh tab.
   // Sub-categories always inherit their parent's section.
   section:      { type: DataTypes.ENUM('grocery', 'fresh'), allowNull: false, defaultValue: 'grocery' },
+  // Heading a main category is listed under on the app's home grid
+  // (e.g. "Grocery & Kitchen"). Null → shown under a generic heading.
+  groupName:    { type: DataTypes.STRING(60), allowNull: true, field: 'group_name' },
   // "Deleted" in the admin but still referenced by archived products (kept for
   // order history). Hidden from the admin list; always inactive.
   isArchived:   { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'is_archived' },

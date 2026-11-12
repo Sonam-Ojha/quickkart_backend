@@ -4,6 +4,8 @@ const OrderItem     = require('../../models/order-item.model');
 const Rider         = require('../../models/rider.model');
 const User          = require('../../models/user.model');
 const Product       = require('../../models/product.model');
+const Restaurant    = require('../../models/restaurant.model');
+const { riderOrderView, RESTAURANT_PICKUP_ATTRS } = require('../../services/food-order.service');
 const dispatch      = require('../../services/rider-dispatch.service');
 const riderOrderSvc = require('../../services/rider-order.service');
 const earningsSvc   = require('../../services/rider-earnings.service');
@@ -30,11 +32,12 @@ const myOrders = async (req, res) => {
           model: OrderItem, as: 'items',
           include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'imageUrl'] }],
         },
+        { model: Restaurant, as: 'restaurant', attributes: RESTAURANT_PICKUP_ATTRS, required: false },
       ],
       order: [['created_at', 'DESC']],
       limit: 30,
     });
-    res.json({ orders });
+    res.json({ orders: orders.map(riderOrderView) });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 

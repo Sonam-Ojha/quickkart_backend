@@ -106,8 +106,13 @@ const notifyOrderStatus = async (order, newStatus) => {
 };
 
 const notifyAdminNewOrder = async (order) => {
-  const title = `🛒 New Order #${order.id} — ₹${Math.round(order.total ?? 0)}`;
-  const body  = `A new order has been placed. Tap to review.`;
+  // Food orders name the restaurant ops has to call to relay the order.
+  const title = order.restaurantName
+    ? `🍱 New Food Order #${order.id} — ₹${Math.round(order.total ?? 0)}`
+    : `🛒 New Order #${order.id} — ₹${Math.round(order.total ?? 0)}`;
+  const body  = order.restaurantName
+    ? `Call ${order.restaurantName} to confirm, then mark it Confirmed.`
+    : `A new order has been placed. Tap to review.`;
   // Save to DB first (always, even if FCM fails)
   console.log('[ADMIN NOTIF] saving to DB…');
   await saveAdminNotification({ title, body, type: 'order', sourceId: order.id, icon: '🛒' });
@@ -136,7 +141,7 @@ const notifyRiderNewOrder = async (riderId, order) => {
     : 'Customer location';
 
   // Build items summary: "Milk, Bread, Eggs" or "Milk, Bread (+3 more)"
-  const items = (order.items ?? []).map(i => i.product?.name).filter(Boolean);
+  const items = (order.items ?? []).map(i => i.product?.name ?? i.itemName).filter(Boolean);
   const MAX_SHOW = 3;
   const itemsLine = items.length === 0
     ? `${order.itemCount ?? '?'} items`

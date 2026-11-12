@@ -60,11 +60,13 @@ function keyFromUrl(url) {
  *
  * @param {Buffer} buffer      Raw file buffer from multer memoryStorage
  * @param {string|number} scope  Used as path prefix, e.g. productId or "general"
+ * @param {number} [maxSide]     Longest-side cap; defaults to MAX_SIDE
+ * @param {number} [quality]     WebP quality; defaults to WEBP_QUALITY
  */
-async function uploadImage(buffer, scope = 'general') {
+async function uploadImage(buffer, scope = 'general', maxSide = MAX_SIDE, quality = WEBP_QUALITY) {
   const optimised = await sharp(buffer)
-    .resize({ width: MAX_SIDE, height: MAX_SIDE, fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: WEBP_QUALITY })
+    .resize({ width: maxSide, height: maxSide, fit: 'inside', withoutEnlargement: true })
+    .webp({ quality })
     .toBuffer();
 
   const key = `products/${scope}/${crypto.randomUUID()}.webp`;
