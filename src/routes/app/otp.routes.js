@@ -45,10 +45,9 @@ router.post('/send', async (req, res) => {
         return res.status(429).json({ message: 'Too many OTP requests. Try again in 15 minutes.' });
       }
       const result = await otpService.sendOtpEmail(email);
-      const rawOtp = result.dev ? result.otp : undefined;
       return res.json({ success: true, channel: 'email',
-        devOtp:    flags.showWeb ? rawOtp : undefined,
-        devOtpApp: flags.showApp ? rawOtp : undefined,
+        devOtp:    flags.showWeb ? result.otp : undefined,
+        devOtpApp: flags.showApp ? result.otp : undefined,
       });
     }
 
@@ -63,10 +62,9 @@ router.post('/send', async (req, res) => {
       if (!result.success) {
         return res.status(503).json({ message: 'SMS delivery failed. Please try again shortly.' });
       }
-      const rawOtp = result.dev ? result.otp : undefined;
       return res.json({ success: true, channel: 'sms',
-        devOtp:    flags.showWeb ? rawOtp : undefined,
-        devOtpApp: flags.showApp ? rawOtp : undefined,
+        devOtp:    flags.showWeb ? result.otp : undefined,
+        devOtpApp: flags.showApp ? result.otp : undefined,
       });
     }
 

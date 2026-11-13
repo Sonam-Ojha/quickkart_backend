@@ -74,6 +74,8 @@ async function sendOtpSms(mobile) {
     console.log(`[OTP DEV] mobile=${mobile} otp=${otp}`);
     return { success: true, dev: true, otp };
   }
+  // Always carry otp forward so the route layer can include it when the
+  // "Show OTP" admin toggle is on — even after SMS is live.
 
   // DLT template text with {#var#} replaced by the actual OTP
   const text = `Your Jhatpats verification code is ${otp}. Valid for 10 minutes. Do not share it with anyone.`;
@@ -109,7 +111,7 @@ async function sendOtpSms(mobile) {
             json.statusCode === 200 ||
             json.status === 'success'
           ) {
-            resolve({ success: true });
+            resolve({ success: true, otp });
           } else {
             const reason = json.description || json.message || json.Message || 'Orbitel SMS error';
             console.error(`[OTP] Orbitel failed: ${reason} | raw: ${data}`);
@@ -118,7 +120,7 @@ async function sendOtpSms(mobile) {
         } catch {
           // Some providers return plain-text success
           if (res.statusCode === 200) {
-            resolve({ success: true });
+            resolve({ success: true, otp });
           } else {
             console.error('[OTP] Orbitel unexpected response:', data);
             resolve({ success: false, error: 'SMS provider error' });

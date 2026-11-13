@@ -66,7 +66,7 @@ const sendOtp = async (req, res) => {
     // back so the rider app can show it on screen. Remove once SMS is live.
     const showRow = await Setting.findOne({ where: { key: 'show_otp_rider_app' } });
     const showOtp = (showRow?.value ?? '1') === '1';
-    res.json({ sent: true, registered: !!rider, devOtp: showOtp && result.dev ? result.otp : undefined });
+    res.json({ sent: true, registered: !!rider, devOtp: showOtp ? result.otp : undefined });
   } catch (err) { res.status(500).json({ message: err.message || 'Failed to send OTP' }); }
 };
 
