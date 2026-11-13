@@ -5,7 +5,8 @@ const DarkStore        = require('../../models/darkstore.model');
 const otpService       = require('../../services/otp.service');
 const AccountDeletion  = require('../../models/account-deletion.model');
 
-const SECRET = process.env.JWT_SECRET;
+const SECRET  = process.env.JWT_SECRET;
+const Setting = require('../../models/setting.model');
 
 const VEHICLE_TYPES = ['bike', 'scooter', 'ebike', 'bicycle', 'cycle', 'other'];
 
@@ -63,7 +64,9 @@ const sendOtp = async (req, res) => {
     const result = await otpService.sendOtpSms(mobile);
     // No SMS plan yet: when the SMS wasn't actually delivered, hand the code
     // back so the rider app can show it on screen. Remove once SMS is live.
-    res.json({ sent: true, registered: !!rider, devOtp: result.dev ? result.otp : undefined });
+    const showRow = await Setting.findOne({ where: { key: 'show_otp_rider_app' } });
+    const showOtp = (showRow?.value ?? '1') === '1';
+    res.json({ sent: true, registered: !!rider, devOtp: showOtp && result.dev ? result.otp : undefined });
   } catch (err) { res.status(500).json({ message: err.message || 'Failed to send OTP' }); }
 };
 

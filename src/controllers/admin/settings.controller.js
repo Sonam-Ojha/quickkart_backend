@@ -25,6 +25,10 @@ const DEFAULTS = {
   charge_late_night_enabled:     '0',  charge_late_night_amount:     '10',
   charge_packaging_fee_enabled:  '0',  charge_packaging_fee_amount:  '5',
   charge_cod_fee_enabled:        '0',  charge_cod_fee_amount:        '5',
+  // OTP visibility
+  show_otp_web:          '1',
+  show_otp_customer_app: '1',
+  show_otp_rider_app:    '1',
 };
 
 // GET /api/admin/settings

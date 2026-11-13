@@ -1,5 +1,15 @@
 const router     = require('express').Router();
 const otpService = require('../../services/otp.service');
+const Setting    = require('../../models/setting.model');
+
+async function getOtpFlags() {
+  const rows = await Setting.findAll({ where: { key: ['show_otp_web', 'show_otp_customer_app'] } });
+  const map  = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  return {
+    showWeb: (map['show_otp_web']          ?? '1') === '1',
+    showApp: (map['show_otp_customer_app'] ?? '1') === '1',
+  };
+}
 
 // In-memory rate limiter: max 5 send attempts per mobile/email per 15 minutes
 const rateLimitMap = new Map();
@@ -24,19 +34,22 @@ function isRateLimited(key) {
   return record.count > RATE_MAX;
 }
 
-const isDev = process.env.NODE_ENV !== 'production';
-
 // POST /api/app/otp/send
 router.post('/send', async (req, res) => {
   try {
     const { email, mobile } = req.body;
+    const flags = await getOtpFlags();
 
     if (email) {
       if (isRateLimited(email)) {
         return res.status(429).json({ message: 'Too many OTP requests. Try again in 15 minutes.' });
       }
       const result = await otpService.sendOtpEmail(email);
-      return res.json({ success: true, channel: 'email', devOtp: isDev && result.dev ? result.otp : undefined });
+      const rawOtp = result.dev ? result.otp : undefined;
+      return res.json({ success: true, channel: 'email',
+        devOtp:    flags.showWeb ? rawOtp : undefined,
+        devOtpApp: flags.showApp ? rawOtp : undefined,
+      });
     }
 
     if (mobile) {
@@ -50,7 +63,11 @@ router.post('/send', async (req, res) => {
       if (!result.success) {
         return res.status(503).json({ message: 'SMS delivery failed. Please try again shortly.' });
       }
-      return res.json({ success: true, channel: 'sms', devOtp: isDev && result.dev ? result.otp : undefined });
+      const rawOtp = result.dev ? result.otp : undefined;
+      return res.json({ success: true, channel: 'sms',
+        devOtp:    flags.showWeb ? rawOtp : undefined,
+        devOtpApp: flags.showApp ? rawOtp : undefined,
+      });
     }
 
     return res.status(400).json({ message: 'email or mobile is required' });
