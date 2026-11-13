@@ -10,5 +10,7 @@ router.use(authenticateCustomer);
 router.get('/',         ctrl.get);
 router.put('/',         ctrl.update);
 router.post('/fcm-token', ctrl.saveFcmToken);
+// User opts in to reopen notification — FCM token already saved, just acknowledge
+router.post('/notify-reopen', (_req, res) => res.json({ ok: true }));
 
 module.exports = router;

@@ -1,4 +1,14 @@
 const Setting = require('../../models/setting.model');
+const { sendToUsers } = require('../../services/notification.service');
+const User = require('../../models/user.model');
+
+async function notifyAllUsers(title, body) {
+  try {
+    const { Op } = require('sequelize');
+    const users = await User.findAll({ where: { fcm_token: { [Op.ne]: null } }, attributes: ['id'] });
+    if (users.length) await sendToUsers(users.map(u => u.id), { title, body });
+  } catch (e) { console.error('[SETTINGS NOTIFY]', e.message); }
+}
 
 const DEFAULTS = {
   footer_tagline:   'Groceries, essentials & documents delivered in minutes.',
@@ -48,6 +58,18 @@ exports.upsertMany = async (req, res) => {
   try {
     const entries = Object.entries(req.body);
     if (!entries.length) return res.status(400).json({ message: 'No settings provided' });
+
+    // Detect service_enabled toggle to send notifications
+    if ('service_enabled' in req.body) {
+      const prev = await Setting.findOne({ where: { key: 'service_enabled' } });
+      const wasEnabled = prev?.value !== 'false';
+      const nowEnabled = req.body.service_enabled !== 'false' && req.body.service_enabled !== false;
+      if (wasEnabled && !nowEnabled) {
+        notifyAllUsers('Jhatpats is temporarily closed 🔒', 'Service is paused right now. Tap "Notify me" to get alerted when we reopen!').catch(() => {});
+      } else if (!wasEnabled && nowEnabled) {
+        notifyAllUsers("We're back! 🎉", 'Jhatpats is open again. Order your groceries now!').catch(() => {});
+      }
+    }
 
     await Promise.all(
       entries.map(([key, value]) =>

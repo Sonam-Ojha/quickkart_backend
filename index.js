@@ -93,10 +93,44 @@ const dbInit = isProd
   ? sequelize.authenticate().then(() => require('./src/config/ensure-schema')())
   : sequelize.sync({ alter: { drop: false } });
 
+// Auto-reopen service when reopens_at time is reached
+function startReopenWatcher() {
+  setInterval(async () => {
+    try {
+      const Setting = require('./src/models/setting.model');
+      const [enabledRow, reopenRow] = await Promise.all([
+        Setting.findOne({ where: { key: 'service_enabled' } }),
+        Setting.findOne({ where: { key: 'reopens_at' } }),
+      ]);
+      const isDisabled = enabledRow?.value === 'false';
+      const reopensAt  = reopenRow?.value;
+      if (!isDisabled || !reopensAt) return;
+      if (new Date() >= new Date(reopensAt)) {
+        await Promise.all([
+          Setting.upsert({ key: 'service_enabled', value: 'true' }),
+          Setting.upsert({ key: 'reopens_at', value: '' }),
+        ]);
+        console.log('[SERVICE] Auto-reopened at', new Date().toISOString());
+        // Notify all users with FCM tokens
+        try {
+          const { Op } = require('sequelize');
+          const User = require('./src/models/user.model');
+          const { sendToUsers } = require('./src/services/notification.service');
+          const users = await User.findAll({ where: { fcm_token: { [Op.ne]: null } }, attributes: ['id'] });
+          if (users.length) await sendToUsers(users.map(u => u.id), { title: "We're back! 🎉", body: 'Jhatpats is open again. Order your groceries now!' });
+        } catch (e) { console.error('[SERVICE] notify error:', e.message); }
+      }
+    } catch (e) {
+      console.error('[SERVICE] reopen watcher error:', e.message);
+    }
+  }, 60 * 1000); // check every minute
+}
+
 dbInit
   .then(() => {
     console.log(isProd ? 'Database connected' : 'Database connected and synced');
     require('./src/services/rider-dispatch.service').startSweeper();
+    startReopenWatcher();
     startServer();
   })
   .catch((err) => {
