@@ -31,6 +31,10 @@ const Order = sequelize.define('Order', {
   // One restaurant per order; the rider picks up from it instead of the store.
   // storeId stays the serving area's store (dispatch + reporting use it).
   restaurantId: { type: DataTypes.INTEGER, allowNull: true, field: 'restaurant_id', references: { model: 'restaurants', key: 'id' } },
+  // Restaurant marked the food ready for the rider (partner panel).
+  readyAt:      { type: DataTypes.DATE, allowNull: true, field: 'ready_at' },
+  // When ops was alerted that the restaurant hadn't accepted in time (once per order).
+  partnerAlertedAt: { type: DataTypes.DATE, allowNull: true, field: 'partner_alerted_at' },
 
   // ── Rider delivery flow ───────────────────────────────────────────────
   // `status` above stays the shared lifecycle (customer app + admin panel

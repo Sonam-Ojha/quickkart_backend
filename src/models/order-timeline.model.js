@@ -9,7 +9,8 @@ const OrderTimeline = sequelize.define('OrderTimeline', {
     allowNull: false,
   },
   note:      { type: DataTypes.STRING(255), allowNull: true },
-  createdAt: { type: DataTypes.DATE, field: 'created_at' },
+  // timestamps are off for this table, so stamp the time ourselves.
+  createdAt: { type: DataTypes.DATE, field: 'created_at', defaultValue: DataTypes.NOW },
 }, {
   tableName: 'order_timeline',
   timestamps: false,

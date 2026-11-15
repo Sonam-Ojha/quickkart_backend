@@ -9,7 +9,7 @@ router.use(authenticate, requireAdmin);
 
 const handle = (fn, status = 400) => async (req, res) => {
   try { await fn(req, res); }
-  catch (err) { res.status(err.message?.endsWith('not found') ? 404 : status).json({ message: err.message }); }
+  catch (err) { res.status(err.status ?? (err.message?.endsWith('not found') ? 404 : status)).json({ message: err.message }); }
 };
 
 // ── Restaurants ──
@@ -32,6 +32,23 @@ router.patch('/restaurants/:id/toggle', handle(async (req, res) => {
 router.delete('/restaurants/:id', handle(async (req, res) => {
   await svc.deleteRestaurant(req.params.id);
   res.json({ message: 'Restaurant deleted' });
+}));
+
+// ── Partner staff logins (mobile + password) ──
+const partner = require('../../services/partner.service');
+router.get('/restaurants/:id/staff', handle(async (req, res) => {
+  res.json({ staff: await partner.listStaff(req.params.id) });
+}, 500));
+router.post('/restaurants/:id/staff', handle(async (req, res) => {
+  res.status(201).json({ staff: await partner.createStaff(req.params.id, req.body ?? {}) });
+}));
+// { name?, password? (reset), isActive? }
+router.patch('/restaurants/:id/staff/:staffId', handle(async (req, res) => {
+  res.json({ staff: await partner.updateStaff(req.params.id, req.params.staffId, req.body ?? {}) });
+}));
+router.delete('/restaurants/:id/staff/:staffId', handle(async (req, res) => {
+  await partner.deleteStaff(req.params.id, req.params.staffId);
+  res.json({ message: 'Login deleted' });
 }));
 
 // ── Menu ──

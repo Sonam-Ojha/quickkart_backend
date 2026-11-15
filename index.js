@@ -68,6 +68,7 @@ require('./src/models/rider-earning.model');      // → riders, orders
 require('./src/models/rider-support-message.model'); // → riders
 require('./src/models/print-order.model');           // → users
 require('./src/models/admin-notification.model');    // standalone
+require('./src/models/app-theme.model');             // standalone
 
 const PORT = process.env.PORT || 4000;
 
@@ -130,6 +131,7 @@ dbInit
   .then(() => {
     console.log(isProd ? 'Database connected' : 'Database connected and synced');
     require('./src/services/rider-dispatch.service').startSweeper();
+    require('./src/services/partner.service').startAcceptAlerts();
     startReopenWatcher();
     startServer();
   })

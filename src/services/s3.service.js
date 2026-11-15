@@ -144,6 +144,7 @@ const FILE_MIME = {
   '.rtf':  'application/rtf',
   '.txt':  'text/plain',
   '.csv':  'text/csv',
+  '.json': 'application/json',
   '.jpg':  'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.png':  'image/png',

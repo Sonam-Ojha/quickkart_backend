@@ -205,6 +205,7 @@ const publicRestaurant = (r) => ({
   prepTimeMins: r.prepTimeMins,
   openTime:     r.openTime,
   closeTime:    r.closeTime,
+  isOpen:       r.isOpen,      // false = restaurant switched off orders (vs. outside hours)
   openNow:      isOpenNow(r),
 });
 

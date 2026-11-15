@@ -111,7 +111,9 @@ const notifyAdminNewOrder = async (order) => {
     ? `🍱 New Food Order #${order.id} — ₹${Math.round(order.total ?? 0)}`
     : `🛒 New Order #${order.id} — ₹${Math.round(order.total ?? 0)}`;
   const body  = order.restaurantName
-    ? `Call ${order.restaurantName} to confirm, then mark it Confirmed.`
+    ? (order.partnerHandles
+        ? `Waiting for ${order.restaurantName} to accept in their partner panel.`
+        : `Call ${order.restaurantName} to confirm, then mark it Confirmed.`)
     : `A new order has been placed. Tap to review.`;
   // Save to DB first (always, even if FCM fails)
   console.log('[ADMIN NOTIF] saving to DB…');

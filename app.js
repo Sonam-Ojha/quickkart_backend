@@ -90,6 +90,8 @@ app.use(express.json());
 
 // Serve uploaded images as static files
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
+// Festival theme art packs (built by scripts/build-theme-presets.js) — admin presets point here.
+app.use('/theme-presets', express.static(path.join(__dirname, 'public/theme-presets'), { maxAge: '7d' }));
 
 // ── Admin Panel API (/api/admin/...) ──────────────────────
 app.use('/api/admin/auth',      adminAuthRoutes);
@@ -117,7 +119,11 @@ app.use('/api/admin/rider-ops',   adminRiderOpsRoutes);
 app.use('/api/admin/geo',         adminGeoRoutes);
 app.use('/api/admin/print-orders',      require('./src/routes/admin/print-orders.routes'));
 app.use('/api/admin/food',              require('./src/routes/admin/food.routes'));
+app.use('/api/admin/themes',            require('./src/routes/admin/theme.routes'));
 app.use('/api/admin/food-orders',       require('./src/routes/admin/food-orders.routes'));
+
+// ── Restaurant partner panel API (/api/partner/...) ──────
+app.use('/api/partner', require('./src/routes/partner/partner.routes'));
 app.use('/api/admin/account-deletions', adminAccountDeletionRoutes);
 app.use('/api/admin/notifications',       require('./src/routes/admin/notifications.routes'));
 app.use('/api/admin/admin-notifications', require('./src/routes/admin/admin-notifications.routes'));
@@ -141,6 +147,7 @@ app.use('/api/app/cart',       appCartRoutes);
 app.use('/api/app/membership', appMembershipRoutes);
 app.use('/api/app/location',  appLocationRoutes);
 app.use('/api/app/food',      require('./src/routes/app/food.routes'));
+app.use('/api/app/theme',     require('./src/routes/app/theme.routes'));
 app.use('/api/app/otp',            appOtpRoutes);
 app.use('/api/app/service-status', require('./src/routes/app/service-status.routes'));
 app.use('/api/app/payments',  require('./src/routes/app/payment.routes'));

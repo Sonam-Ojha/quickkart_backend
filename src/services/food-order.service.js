@@ -110,7 +110,8 @@ const placeFoodOrder = async (userId, body) => {
     ).catch(() => {});
   }
   // Ops relays the order to the restaurant, so the alert carries its name.
-  notifyAdminNewOrder({ id: order.id, total, restaurantName: restaurant.name })
+  const partnerHandles = await require('./partner.service').hasActiveStaff(restaurant.id).catch(() => false);
+  notifyAdminNewOrder({ id: order.id, total, restaurantName: restaurant.name, partnerHandles })
     .catch(err => console.error('[ADMIN NOTIF] failed:', err.message));
 
   return { ...order.toJSON(), payment_method, restaurant: { id: restaurant.id, name: restaurant.name } };
