@@ -5,6 +5,15 @@ const Otp          = require('../models/otp.model');
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 
+// ── Store review account ─────────────────────────────────────────────────────
+// Google/Apple reviewers can't receive our SMS, so one number signs in with a
+// fixed code instead. Off unless BOTH env vars are set; keep REVIEW_MOBILE a
+// number no real customer owns, and clear these once review is done.
+const REVIEW_MOBILE = (process.env.REVIEW_MOBILE || '').replace(/\D/g, '');
+const REVIEW_OTP    = (process.env.REVIEW_OTP    || '').trim();
+const isReviewMobile = (mobile) =>
+  Boolean(REVIEW_MOBILE && REVIEW_OTP) && String(mobile || '').replace(/\D/g, '') === REVIEW_MOBILE;
+
 function _generateOtp() {
   return String(randomInt(100000, 1000000));
 }
@@ -62,6 +71,13 @@ async function sendOtpEmail(email) {
 
 // ── Send OTP via Orbitel Bulk SMS (DLT-registered template) ──────────────────
 async function sendOtpSms(mobile) {
+  // Store review account: save the fixed code, send no SMS, never leak the code.
+  if (isReviewMobile(mobile)) {
+    await _saveOtp(String(mobile).replace(/\D/g, ''), REVIEW_OTP);
+    console.log(`[OTP] review account sign-in requested for ${mobile}`);
+    return { success: true, review: true };
+  }
+
   const otp = _generateOtp();
   await _saveOtp(mobile, otp);
 
@@ -159,6 +175,9 @@ async function verifyOtp(key, otp) {
 // Until a transactional template ID is configured via ORBITEL_NOTIF_TEMPLATE_ID,
 // messages are only logged in dev and silently skipped in production.
 async function sendSms(mobile, message) {
+  // No real handset behind the review account — don't spend SMS credits on it.
+  if (isReviewMobile(mobile)) return;
+
   const username   = process.env.ORBITEL_USERNAME;
   const apiKey     = process.env.ORBITEL_API_KEY;
   const sender     = process.env.ORBITEL_SENDER           || 'JHTPTS';
