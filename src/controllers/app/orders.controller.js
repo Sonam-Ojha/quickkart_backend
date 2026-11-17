@@ -17,6 +17,9 @@ const { sendSms }   = require('../../services/otp.service');
 const { notifyAdminNewOrder } = require('../../services/notification.service');
 const { storeForDelivery, storeCatalog, NOT_SERVICEABLE } = require('../../services/storefront.service');
 
+const checkout = require('../../services/checkout-payment.service');
+const walletCheckout = require('../../services/wallet-checkout.service');
+
 const list = async (req, res) => {
   try {
     const orders = await Order.findAll({
@@ -36,12 +39,24 @@ const list = async (req, res) => {
 };
 
 const place = async (req, res) => {
-  const t = await sequelize.transaction();
   try {
+    if (!['cod', 'wallet'].includes(req.body.payment_method ?? 'cod')) throw checkout.fail('Use verified online checkout for online payments');
+    req.body.items = checkout.normalizeItems(req.body.items);
+  } catch (err) { return res.status(err.status ?? 400).json({ message: err.message }); }
+  let t;
+  try {
+    t = await sequelize.transaction();
     const { items, address_id, coupon_code, payment_method = 'cod', lat, lng } = req.body;
 
     if (!items || items.length === 0) {
+      await t.rollback();
       return res.status(400).json({ message: 'No items in order' });
+    }
+
+    const walletState = payment_method === 'wallet' ? await walletCheckout.begin(req.user.id, req.body, 'grocery', t) : null;
+    if (walletState?.existing) {
+      await t.commit();
+      return res.json({ ...walletState.existing.toJSON(), payment_method: 'wallet' });
     }
 
     // ── Server-side price computation ─────────────────────────────────────────
@@ -218,18 +233,13 @@ const place = async (req, res) => {
       }
     }
 
-    const gatewayMap = { cod: 'cod', razorpay: 'razorpay' };
-    await Payment.create({
-      orderId: order.id,
-      gateway: gatewayMap[payment_method] ?? 'cod',
-      amount:  total,
-      status:  payment_method === 'cod' ? 'pending' : 'paid',
-    }, { transaction: t });
+    if (walletState) await walletCheckout.debit(walletState, order, total, t);
+    else await Payment.create({ orderId: order.id, gateway: 'cod', amount: total, status: 'pending' }, { transaction: t });
 
     await t.commit();
 
     // Send order confirmation SMS
-    const customer = await User.findByPk(req.user.id, { attributes: ['mobile', 'name'] });
+    const customer = await User.findByPk(req.user.id, { attributes: ['mobile', 'name'] }).catch(() => null);
     if (customer?.mobile) {
       const payLabel = payment_method === 'cod' ? 'Cash on Delivery' : 'Online Payment';
       sendSms(customer.mobile,
@@ -248,7 +258,7 @@ const place = async (req, res) => {
 
     return res.status(201).json({ ...order.toJSON(), payment_method });
   } catch (err) {
-    await t.rollback();
+    if (t && !t.finished) await t.rollback();
     console.error('[ORDER ERROR]', err.message, err.errors ?? '');
     const isClientError = err.status && err.status < 500;
     return res.status(err.status ?? 500).json({ message: isClientError ? err.message : 'Failed to place order' });
@@ -276,48 +286,31 @@ const getById = async (req, res) => {
 
 const cancel = async (req, res) => {
   try {
-    const order = await Order.findOne({
-      where: { id: req.params.id, customerId: req.user.id },
-      include: [{ model: OrderItem, as: 'items' }],
-    });
-    if (!order) return res.status(404).json({ message: 'Order not found' });
-
-    const CANCELLABLE = ['pending', 'confirmed', 'preparing'];
-    if (!CANCELLABLE.includes(order.status)) {
-      return res.status(400).json({
-        message: order.status === 'out_for_delivery'
-          ? 'Cannot cancel — rider is already on the way'
-          : 'Order cannot be cancelled at this stage',
+    const order = await sequelize.transaction(async transaction => {
+      const current = await Order.findOne({
+        where: { id: req.params.id, customerId: req.user.id },
+        transaction, lock: transaction.LOCK.UPDATE,
       });
-    }
-
-    const { reason = 'Cancelled by customer' } = req.body;
-
-    const ct = await sequelize.transaction();
-    try {
-      await order.update({ status: 'cancelled' }, { transaction: ct });
-      await OrderTimeline.create({ orderId: order.id, status: 'cancelled', note: reason }, { transaction: ct });
-
-      await Promise.all(
-        (order.items ?? []).map(item =>
-          Inventory.increment('stockQty', {
-            by: item.quantity,
-            where: { productId: item.productId, ...(order.storeId ? { storeId: order.storeId } : {}) },
-            transaction: ct,
-          })
-        )
-      );
-      await ct.commit();
-    } catch (innerErr) {
-      await ct.rollback();
-      throw innerErr;
-    }
-
+      if (!current) throw checkout.fail('Order not found', 404);
+      if (current.status === 'cancelled') return current;
+      if (!['pending', 'confirmed', 'preparing'].includes(current.status))
+        throw checkout.fail('Order cannot be cancelled at this stage');
+      await walletCheckout.refund(current, transaction);
+      await current.update({ status: 'cancelled' }, { transaction });
+      await OrderTimeline.create({ orderId: current.id, status: 'cancelled', note: req.body.reason || 'Cancelled by customer' }, { transaction });
+      const items = await OrderItem.findAll({ where: { orderId: current.id }, transaction });
+      for (const item of items) {
+        if (item.productId != null) await Inventory.increment('stockQty', {
+          by: item.quantity, where: { productId: item.productId, ...(current.storeId ? { storeId: current.storeId } : {}) }, transaction,
+        });
+      }
+      return current;
+    });
     require('../../services/realtime.service').orderChanged(order);
     require('../../services/rider-dispatch.service').withdrawOffers(order.id).catch(() => {});
     return res.json({ message: 'Order cancelled successfully' });
   } catch (err) {
-    return res.status(500).json({ message: 'Failed to cancel order' });
+    return res.status(err.status ?? 500).json({ message: err.status ? err.message : 'Failed to cancel order' });
   }
 };
 

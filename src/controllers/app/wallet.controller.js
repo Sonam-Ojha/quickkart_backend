@@ -3,13 +3,14 @@ const WalletTransaction = require('../../models/wallet-transaction.model');
 
 const getBalance = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id, { attributes: ['id', 'name', 'wallet_balance'] });
+    const user = await User.findByPk(req.user.id, { attributes: ['id', 'name', 'walletBalance'] });
+    if (!user) return res.status(404).json({ message: 'User not found' });
     const recent = await WalletTransaction.findAll({
-      where: { user_id: req.user.id },
+      where: { userId: req.user.id },
       order: [['created_at', 'DESC']],
       limit: 5,
     });
-    return res.json({ balance: user.wallet_balance, recentTransactions: recent });
+    return res.json({ balance: user.walletBalance, recentTransactions: recent });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
@@ -19,7 +20,7 @@ const getHistory = async (req, res) => {
   try {
     const { limit = 20, offset = 0 } = req.query;
     const { rows, count } = await WalletTransaction.findAndCountAll({
-      where: { user_id: req.user.id },
+      where: { userId: req.user.id },
       order: [['created_at', 'DESC']],
       limit:  Math.min(Math.max(Number(limit)  || 20, 1), 100),
       offset: Math.max(Number(offset) || 0, 0),

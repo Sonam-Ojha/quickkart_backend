@@ -1,12 +1,12 @@
 const router  = require('express').Router();
-const crypto  = require('crypto');
-const Razorpay = require('razorpay');
-const { Op }  = require('sequelize');
+const checkout = require('../../services/checkout-payment.service');
+const sequelize = require('../../config/db');
+const User = require('../../models/user.model');
+const Payment = require('../../models/payment.model');
+const Order = require('../../models/order.model');
 const svc = require('../../services/food.service');
-const { placeFoodOrder } = require('../../services/food-order.service');
+const { placeFoodOrder, quoteFoodOrder } = require('../../services/food-order.service');
 const { authenticateCustomer } = require('../../middlewares/customer.middleware');
-const MenuItem = require('../../models/menu-item.model');
-const Restaurant = require('../../models/restaurant.model');
 
 // Food-tab API. Browsing is public like products/categories; placing an order needs login.
 
@@ -14,13 +14,13 @@ const Restaurant = require('../../models/restaurant.model');
 // Apps show the Food tab only when enabled is true.
 router.get('/status', async (req, res) => {
   try { res.json(await svc.getFoodStatus(req.query.lat, req.query.lng)); }
-  catch (err) { res.status(500).json({ message: err.message }); }
+  catch (err) { res.status(err.status ?? 500).json({ message: err.message }); }
 });
 
 // GET /api/app/food/restaurants?lat=&lng=
 router.get('/restaurants', async (req, res) => {
   try { res.json(await svc.listPublicRestaurants(req.query.lat, req.query.lng)); }
-  catch (err) { res.status(500).json({ message: err.message }); }
+  catch (err) { res.status(err.status ?? 500).json({ message: err.message }); }
 });
 
 // GET /api/app/food/restaurants/:id  → { restaurant, sections: [{ id, name, items }] }
@@ -43,32 +43,10 @@ router.post('/orders', authenticateCustomer, async (req, res) => {
 // Validates food items, computes total server-side, returns Razorpay order
 router.post('/payments/razorpay/create', authenticateCustomer, async (req, res) => {
   try {
-    const { restaurant_id, items } = req.body;
-    if (!restaurant_id || !Array.isArray(items) || items.length === 0)
-      return res.status(400).json({ message: 'restaurant_id and items are required' });
-
-    const restaurant = await Restaurant.findOne({ where: { id: restaurant_id, isActive: true } });
-    if (!restaurant) return res.status(404).json({ message: 'Restaurant not found' });
-
-    const ids = items.map(i => Number(i.menu_item_id ?? i.id));
-    const menu = await MenuItem.findAll({ where: { id: { [Op.in]: ids }, restaurantId: restaurant.id, isActive: true } });
-    const byId = new Map(menu.map(m => [m.id, m]));
-
-    let subtotal = 0;
-    for (const it of items) {
-      const id = Number(it.menu_item_id ?? it.id);
-      const m  = byId.get(id);
-      if (!m) return res.status(409).json({ message: 'Some items are no longer on the menu.' });
-      subtotal += m.price * (Number(it.qty) || 1);
-    }
-    const deliveryFee = subtotal >= 99 ? 0 : 25;
-    const total = subtotal + deliveryFee + 5; // +5 handling
-
-    const rzp = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
-    const order = await rzp.orders.create({ amount: Math.round(total * 100), currency: 'INR', receipt: `food_${Date.now()}` });
-    return res.json({ key: process.env.RAZORPAY_KEY_ID, razorpay_order_id: order.id, amount: order.amount });
+    const quote = await quoteFoodOrder(req.user.id, req.body);
+    return res.json(await checkout.createPayment(req.user.id, req.body, 'food', quote.total));
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return res.status(err.status ?? 500).json({ message: err.message });
   }
 });
 
@@ -76,16 +54,20 @@ router.post('/payments/razorpay/create', authenticateCustomer, async (req, res) 
 // Verifies signature then places the food order as paid
 router.post('/payments/razorpay/verify', authenticateCustomer, async (req, res) => {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, ...orderBody } = req.body;
-    const expected = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '')
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-      .digest('hex');
-    if (expected !== razorpay_signature)
-      return res.status(400).json({ message: 'Payment verification failed.' });
-
-    const result = await placeFoodOrder(req.user.id, { ...orderBody, payment_method: 'razorpay' });
-    return res.status(201).json({ ...result, payment_id: razorpay_payment_id });
+    const verified = await checkout.verifyPayment(req.user.id, req.body, 'food');
+    const result = await sequelize.transaction(async transaction => {
+      await User.findByPk(req.user.id, { transaction, lock: transaction.LOCK.UPDATE });
+      const prior = await Payment.findOne({ where: { gateway: 'razorpay', txnId: verified.id }, transaction });
+      if (prior) {
+        const order = await Order.findByPk(prior.orderId, { transaction });
+        if (!order || order.customerId !== req.user.id) throw checkout.fail('Payment already used', 409);
+        return order.toJSON();
+      }
+      return placeFoodOrder(req.user.id, { ...req.body, payment_method: 'razorpay' }, {
+        transaction, paymentId: verified.id, paidAmount: verified.amount,
+      });
+    });
+    return res.status(201).json({ ...result, payment_id: verified.id });
   } catch (err) {
     if (!err.status) console.error('[FOOD RAZORPAY VERIFY]', err.message);
     return res.status(err.status ?? 500).json({ message: err.status ? err.message : 'Failed to place order' });

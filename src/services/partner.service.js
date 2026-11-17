@@ -177,6 +177,9 @@ const reject = async (restaurantId, orderId, reason, staffName) => {
   if (!['pending', 'confirmed', 'preparing'].includes(o.status)) throw fail('This order can no longer be rejected', 409);
   const restaurant = await Restaurant.findByPk(restaurantId, { attributes: ['name'] });
   await sequelize.transaction(async (t) => {
+    await o.reload({ transaction: t, lock: t.LOCK.UPDATE });
+    if (!['pending', 'confirmed', 'preparing'].includes(o.status)) throw fail('This order can no longer be rejected', 409);
+    await require('./wallet-checkout.service').refund(o, t);
     await o.update({ status: 'cancelled', cancelReason: `Restaurant: ${why}`.slice(0, 255) }, { transaction: t });
     await OrderTimeline.create({ orderId: o.id, status: 'cancelled', note: `Rejected by restaurant (${staffName}): ${why}` }, { transaction: t });
   });

@@ -15,6 +15,9 @@ const { isOpenNow } = require('./food.service');
 const { sendSms }   = require('./otp.service');
 const { notifyAdminNewOrder } = require('./notification.service');
 
+const checkout = require('./checkout-payment.service');
+const walletCheckout = require('./wallet-checkout.service');
+
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 
 // Same delivery + handling charges as grocery orders (orders.controller).
@@ -27,7 +30,7 @@ const chargesFor = (subtotal) => ({ deliveryFee: subtotal >= 99 ? 0 : 25, handli
  *
  * body: { restaurant_id, items: [{ menu_item_id, qty }], address_id?, lat, lng, payment_method? }
  */
-const placeFoodOrder = async (userId, body) => {
+const quoteFoodOrder = async (userId, body) => {
   const { restaurant_id, items, address_id, lat, lng, payment_method = 'cod' } = body ?? {};
   if (!restaurant_id) throw fail('Restaurant is required');
   if (!Array.isArray(items) || items.length === 0) throw fail('No items in order');
@@ -44,14 +47,8 @@ const placeFoodOrder = async (userId, body) => {
     throw fail(`${restaurant.name} doesn't deliver to this address`, 409);
   }
 
-  // Merge duplicate lines and validate quantities.
-  const qtyById = new Map();
-  for (const it of items) {
-    const id  = Number(it.menu_item_id ?? it.id);
-    const qty = Number(it.qty ?? 1);
-    if (!Number.isInteger(id) || !Number.isInteger(qty) || qty < 1 || qty > 50) throw fail('Invalid item in cart');
-    qtyById.set(id, (qtyById.get(id) ?? 0) + qty);
-  }
+  const normalized = checkout.normalizeItems(items, true);
+  const qtyById = new Map(normalized.map(i => [i.id, i.qty]));
 
   // Server-side prices; every item must belong to this restaurant and be orderable.
   const menu = await MenuItem.findAll({
@@ -77,8 +74,24 @@ const placeFoodOrder = async (userId, body) => {
     if (!owned) throw fail('Delivery address not found');
   }
 
+  return { restaurant, lines, subtotal, deliveryFee, total };
+};
+
+const placeFoodOrder = async (userId, body, options = {}) => {
+  const payment_method = body.payment_method ?? 'cod';
+  if (!['cod', 'wallet'].includes(payment_method) && !(payment_method === 'razorpay' && options.paymentId && options.transaction))
+    throw fail('Use verified online checkout for online payments');
+  if (payment_method === 'wallet' && !options.transaction) {
+    return sequelize.transaction(transaction => placeFoodOrder(userId, body, { ...options, transaction }));
+  }
+  const walletState = payment_method === 'wallet' ? await walletCheckout.begin(userId, body, 'food', options.transaction) : null;
+  if (walletState?.existing) return { ...walletState.existing.toJSON(), payment_method: 'wallet' };
+  const { restaurant, lines, subtotal, deliveryFee, total } = await quoteFoodOrder(userId, body);
+  if (options.paidAmount != null && options.paidAmount !== Math.round(total * 100))
+    throw fail('Prices changed. Contact support for payment reconciliation.', 409);
+  const { address_id } = body;
   const deliveryOtp = String(crypto.randomInt(100000, 1000000));
-  const order = await sequelize.transaction(async (t) => {
+  const save = async (t) => {
     const o = await Order.create({
       customerId:   userId,
       storeId:      restaurant.storeId,
@@ -94,25 +107,33 @@ const placeFoodOrder = async (userId, body) => {
     }, { transaction: t });
     await OrderItem.bulkCreate(lines.map(l => ({ ...l, orderId: o.id, productId: null })), { transaction: t });
     await OrderTimeline.create({ orderId: o.id, status: 'pending', note: `Food order placed — waiting for ${restaurant.name} to confirm` }, { transaction: t });
-    await Payment.create({
+    if (walletState) await walletCheckout.debit(walletState, o, total, t);
+    else await Payment.create({
       orderId: o.id,
       gateway: payment_method === 'razorpay' ? 'razorpay' : 'cod',
+      txnId: options.paymentId ?? null,
       amount:  total,
       status:  payment_method === 'cod' ? 'pending' : 'paid',
     }, { transaction: t });
     return o;
-  });
+  };
+  const order = options.transaction ? await save(options.transaction) : await sequelize.transaction(save);
 
-  const customer = await User.findByPk(userId, { attributes: ['mobile', 'name'] });
-  if (customer?.mobile) {
-    sendSms(customer.mobile,
-      `Hi ${customer.name || 'there'}! Your Jhatpats food order #${order.id} from ${restaurant.name} is placed. Total: Rs.${total}. Delivery OTP: ${deliveryOtp}. Share it only with your rider.`
-    ).catch(() => {});
-  }
-  // Ops relays the order to the restaurant, so the alert carries its name.
-  const partnerHandles = await require('./partner.service').hasActiveStaff(restaurant.id).catch(() => false);
-  notifyAdminNewOrder({ id: order.id, total, restaurantName: restaurant.name, partnerHandles })
-    .catch(err => console.error('[ADMIN NOTIF] failed:', err.message));
+  const notify = async () => {
+    const customer = await User.findByPk(userId, { attributes: ['mobile', 'name'] });
+    if (customer?.mobile) {
+      sendSms(customer.mobile,
+        `Hi ${customer.name || 'there'}! Your Jhatpats food order #${order.id} from ${restaurant.name} is placed. Total: Rs.${total}. Delivery OTP: ${deliveryOtp}. Share it only with your rider.`
+      ).catch(() => {});
+    }
+    // Ops relays the order to the restaurant, so the alert carries its name.
+    const partnerHandles = await require('./partner.service').hasActiveStaff(restaurant.id).catch(() => false);
+    notifyAdminNewOrder({ id: order.id, total, restaurantName: restaurant.name, partnerHandles })
+      .catch(err => console.error('[ADMIN NOTIF] failed:', err.message));
+
+  };
+  if (options.transaction) options.transaction.afterCommit(() => { notify().catch(console.error); });
+  else notify().catch(console.error);
 
   return { ...order.toJSON(), payment_method, restaurant: { id: restaurant.id, name: restaurant.name } };
 };
@@ -140,4 +161,4 @@ const riderOrderView = (order) => {
   return o;
 };
 
-module.exports = { placeFoodOrder, riderOrderView, RESTAURANT_PICKUP_ATTRS };
+module.exports = { quoteFoodOrder, placeFoodOrder, riderOrderView, RESTAURANT_PICKUP_ATTRS };

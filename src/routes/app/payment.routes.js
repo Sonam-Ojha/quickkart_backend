@@ -1,12 +1,11 @@
 const router  = require('express').Router();
 const crypto  = require('crypto');
-const Razorpay = require('razorpay');
+const checkout = require('../../services/checkout-payment.service');
 const { Op }        = require('sequelize');
 const Order         = require('../../models/order.model');
 const OrderItem     = require('../../models/order-item.model');
 const OrderTimeline = require('../../models/order-timeline.model');
 const Payment       = require('../../models/payment.model');
-const DarkStore     = require('../../models/darkstore.model');
 const Inventory     = require('../../models/inventory.model');
 const Product       = require('../../models/product.model');
 const User          = require('../../models/user.model');
@@ -14,7 +13,7 @@ const Address       = require('../../models/address.model');
 const sequelize     = require('../../../src/config/db');
 const { sendSms }   = require('../../services/otp.service');
 const { authenticateCustomer } = require('../../middlewares/customer.middleware');
-const { storeForDelivery, NOT_SERVICEABLE } = require('../../services/storefront.service');
+const { storeForDelivery, storeCatalog, NOT_SERVICEABLE } = require('../../services/storefront.service');
 
 router.use(authenticateCustomer);
 
@@ -22,16 +21,12 @@ router.use(authenticateCustomer);
 // Creates a Razorpay order and returns key + order_id for frontend
 router.post('/razorpay/create', async (req, res) => {
   try {
-    const { items, lat, lng } = req.body;
-    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-      return res.status(503).json({ message: 'Online payment not configured. Please use Cash on Delivery.' });
-    }
-    if (!items || items.length === 0) {
-      return res.status(400).json({ message: 'No items provided' });
-    }
+    const { lat, lng } = req.body;
+    checkout.fingerprint(req.body, 'grocery');
+    const items = checkout.normalizeItems(req.body.items);
     // Compute amount server-side — never trust the client-supplied amount.
     const productIds = items.map(i => i.product_id ?? i.id);
-    const products   = await Product.findAll({ where: { id: { [Op.in]: productIds } }, attributes: ['id', 'price'] });
+    const products   = await Product.findAll({ attributes: ['id', 'price'], where: { id: { [Op.in]: productIds }, isActive: true } });
     const priceMap   = Object.fromEntries(products.map(p => [p.id, Math.round(p.price / 100)]));
     let subtotal = 0;
     for (const item of items) {
@@ -44,43 +39,36 @@ router.post('/razorpay/create', async (req, res) => {
     // Refuse before the customer pays, not after.
     const { store, located } = await storeForDelivery(lat, lng);
     if (located && !store) return res.status(400).json({ message: NOT_SERVICEABLE });
-    const rzp = new Razorpay({
-      key_id:     process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET,
-    });
-    const order = await rzp.orders.create({
-      amount:   Math.round(computedTotal * 100), // paise — server-computed, not client-supplied
-      currency: 'INR',
-      receipt:  `rcpt_${Date.now()}`,
-    });
-    return res.json({
-      key:               process.env.RAZORPAY_KEY_ID,
-      razorpay_order_id: order.id,
-      amount:            order.amount,
-    });
+    const catalog = await storeCatalog(store?.id);
+    for (const item of items) {
+      if (catalog.hidden.includes(item.id) || (catalog.stock[item.id] != null && catalog.stock[item.id] < item.qty))
+        throw checkout.fail('Some items are unavailable at your store', 409);
+    }
+    if (req.body.address_id != null && !await Address.findOne({ where: { id: req.body.address_id, userId: req.user.id } }))
+      throw checkout.fail('Delivery address not found');
+    return res.json(await checkout.createPayment(req.user.id, req.body, 'grocery', computedTotal));
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return res.status(err.status ?? 500).json({ message: err.message });
   }
 });
 
 // POST /api/app/payments/razorpay/verify
 // Verifies Razorpay payment signature and places order
 router.post('/razorpay/verify', async (req, res) => {
-  const t = await sequelize.transaction();
+  let t;
   try {
-    const {
-      razorpay_order_id, razorpay_payment_id, razorpay_signature,
-      items, lat, lng, address_id,
-    } = req.body;
-
-    // Verify signature
-    const expected = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '')
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-      .digest('hex');
-
-    if (expected !== razorpay_signature) {
-      return res.status(400).json({ message: 'Payment verification failed. Invalid signature.' });
+    const verified = await checkout.verifyPayment(req.user.id, req.body, 'grocery');
+    const { lat, lng, address_id, razorpay_payment_id } = req.body;
+    const items = checkout.normalizeItems(req.body.items);
+    t = await sequelize.transaction();
+    // All checkout completions for a customer serialize, including concurrent retries.
+    await User.findByPk(req.user.id, { transaction: t, lock: t.LOCK.UPDATE });
+    const prior = await Payment.findOne({ where: { gateway: 'razorpay', txnId: verified.id }, transaction: t });
+    if (prior) {
+      const existing = await Order.findByPk(prior.orderId, { transaction: t });
+      if (!existing || existing.customerId !== req.user.id) throw checkout.fail('Payment already used', 409);
+      await t.commit();
+      return res.json({ ...existing.toJSON(), payment_id: verified.id });
     }
 
     // ── Server-side price computation (same logic as COD path) ───────────────
@@ -101,11 +89,10 @@ router.post('/razorpay/verify', async (req, res) => {
     const handling_charge_computed = 5;
     const total = subtotal + delivery_fee_computed + handling_charge_computed;
 
-    // Payment is already captured here, so if the location check somehow
-    // fails now (it passed at /create) fall back to any active store rather
-    // than losing a paid order.
-    let { store } = await storeForDelivery(lat, lng);
-    if (!store) store = await DarkStore.findOne({ where: { is_active: true } });
+    if (Math.round(total * 100) !== verified.amount) throw checkout.fail('Prices changed. Contact support for payment reconciliation.', 409);
+
+    const { store } = await storeForDelivery(lat, lng);
+    if (!store) throw checkout.fail('Delivery is no longer available here. Contact support for payment reconciliation.', 409);
 
     // Check + lock inventory
     for (const item of items) {
@@ -117,7 +104,7 @@ router.post('/razorpay/verify', async (req, res) => {
         transaction: t,
       });
       if (inv && inv.stockQty < qty) {
-        throw new Error(`Out of stock: product #${productId} (available: ${inv?.stockQty ?? 0}, requested: ${qty})`);
+        throw checkout.fail(`Out of stock: product #${productId} (available: ${inv?.stockQty ?? 0}, requested: ${qty})`, 409);
       }
     }
 
@@ -179,7 +166,7 @@ router.post('/razorpay/verify', async (req, res) => {
     await t.commit();
 
     // Send confirmation SMS
-    const customer = await User.findByPk(req.user.id, { attributes: ['mobile', 'name'] });
+    const customer = await User.findByPk(req.user.id, { attributes: ['mobile', 'name'] }).catch(() => null);
     if (customer?.mobile) {
       sendSms(customer.mobile,
         `Hi ${customer.name || 'there'}! Your Jhatpats order #${order.id} is confirmed. Total: Rs.${total}. Paid via Razorpay. Delivery OTP: ${deliveryOtp}. Share it only with your rider.`
@@ -193,8 +180,8 @@ router.post('/razorpay/verify', async (req, res) => {
 
     return res.status(201).json({ ...order.toJSON(), payment_id: razorpay_payment_id });
   } catch (err) {
-    await t.rollback();
-    return res.status(500).json({ message: err.message });
+    if (t && !t.finished) await t.rollback();
+    return res.status(err.status ?? 500).json({ message: err.message });
   }
 });
 

@@ -88,12 +88,16 @@ const updateStatus = async (id, status, note) => {
   const valid = ['pending','confirmed','preparing','out_for_delivery','delivered','cancelled'];
   if (!valid.includes(status)) throw new Error('Invalid status');
 
-  const order = await Order.findByPk(id);
-  if (!order) throw new Error('Order not found');
-  if (order.status === 'delivered' || order.status === 'cancelled') throw new Error('Cannot update a completed order');
-
-  await order.update({ status });
-  await OrderTimeline.create({ orderId: id, status, note: note || null });
+  const sequelize = require('../config/db');
+  const order = await sequelize.transaction(async transaction => {
+    const current = await Order.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!current) throw new Error('Order not found');
+    if (current.status === 'delivered' || current.status === 'cancelled') throw new Error('Cannot update a completed order');
+    if (status === 'cancelled') await require('./wallet-checkout.service').refund(current, transaction);
+    await current.update({ status }, { transaction });
+    await OrderTimeline.create({ orderId: id, status, note: note || null }, { transaction });
+    return current;
+  });
   // Fire-and-forget push notification to customer
   notifyOrderStatus(order, status).catch(() => {});
   require('./realtime.service').orderChanged(order);
