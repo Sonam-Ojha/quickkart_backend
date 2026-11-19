@@ -2,6 +2,7 @@ const bcrypt        = require('bcryptjs');
 const jwt           = require('jsonwebtoken');
 const { Op }        = require('sequelize');
 const sequelize     = require('../config/db');
+const nonOverlappingTask = require('./non-overlapping-task');
 const RestaurantStaff = require('../models/restaurant-staff.model');
 const Restaurant    = require('../models/restaurant.model');
 const Order         = require('../models/order.model');
@@ -388,7 +389,8 @@ const alertSlowAccepts = async () => {
 let _timer = null;
 const startAcceptAlerts = (ms = 60_000) => {
   if (_timer) return;
-  _timer = setInterval(() => alertSlowAccepts().catch(e => console.error('[partner] accept alert:', e.message)), ms);
+  const runAlerts = nonOverlappingTask(alertSlowAccepts);
+  _timer = setInterval(() => runAlerts().catch(e => console.error('[partner] accept alert:', e.message)), ms);
   _timer.unref?.();
 };
 

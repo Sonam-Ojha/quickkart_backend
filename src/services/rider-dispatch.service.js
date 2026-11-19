@@ -1,5 +1,6 @@
 const { Op }          = require('sequelize');
 const sequelize       = require('../config/db');
+const nonOverlappingTask = require('./non-overlapping-task');
 const { notifyRiderNewOrder } = require('./notification.service');
 const { sendSms }     = require('./otp.service');
 const realtime        = require('./realtime.service');
@@ -275,9 +276,10 @@ let _timer = null;
 const startSweeper = () => {
   const ms = Number(process.env.DISPATCH_SWEEP_MS ?? 15000);
   if (!ms || _timer) return null;
+  const runSweep = nonOverlappingTask(sweep);
   _timer = setInterval(() => {
-    sweep()
-      .then(r => { if (r.redispatched) console.log(`[dispatch] re-offered ${r.redispatched} order(s)`); })
+    runSweep()
+      .then(r => { if (r?.redispatched) console.log(`[dispatch] re-offered ${r.redispatched} order(s)`); })
       .catch(e => console.error('[dispatch] sweep failed:', e.message));
   }, ms);
   _timer.unref();                             // never hold the process open

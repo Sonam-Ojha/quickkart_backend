@@ -89,6 +89,7 @@ function startServer() {
 // sync({ alter }) opens 50-100+ connections across all tables — this was
 // exhausting Hostinger's 500-connections/hour limit on every restart.
 const isProd = process.env.NODE_ENV === 'production';
+const nonOverlappingTask = require('./src/services/non-overlapping-task');
 
 const dbInit = isProd
   ? sequelize.authenticate().then(() => require('./src/config/ensure-schema')())
@@ -96,7 +97,7 @@ const dbInit = isProd
 
 // Auto-reopen service when reopens_at time is reached
 function startReopenWatcher() {
-  setInterval(async () => {
+  setInterval(nonOverlappingTask(async () => {
     try {
       const Setting = require('./src/models/setting.model');
       const [enabledRow, reopenRow] = await Promise.all([
@@ -124,7 +125,7 @@ function startReopenWatcher() {
     } catch (e) {
       console.error('[SERVICE] reopen watcher error:', e.message);
     }
-  }, 60 * 1000); // check every minute
+  }), 60 * 1000); // check every minute
 }
 
 dbInit
