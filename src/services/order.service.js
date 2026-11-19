@@ -93,7 +93,10 @@ const updateStatus = async (id, status, note) => {
     const current = await Order.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!current) throw new Error('Order not found');
     if (current.status === 'delivered' || current.status === 'cancelled') throw new Error('Cannot update a completed order');
-    if (status === 'cancelled') await require('./wallet-checkout.service').refund(current, transaction);
+    if (status === 'cancelled') {
+      await require('./wallet-checkout.service').refund(current, transaction);
+      await require('./coupon.service').releaseForOrder(current.id, transaction);
+    }
     await current.update({ status }, { transaction });
     await OrderTimeline.create({ orderId: id, status, note: note || null }, { transaction });
     return current;

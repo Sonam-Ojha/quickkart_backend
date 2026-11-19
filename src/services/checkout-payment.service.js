@@ -27,9 +27,12 @@ function fingerprint(body, kind) {
   const lat = Number(body.lat), lng = Number(body.lng);
   if (body.lat == null || body.lng == null || body.lat === '' || body.lng === '' || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180)
     throw fail('Please select a valid delivery location');
+  const coupon = typeof body.coupon_code === 'string' ? body.coupon_code.trim().toUpperCase() : '';
   return crypto.createHash('sha256').update(JSON.stringify({
     kind, restaurant: kind === 'food' ? Number(body.restaurant_id) : null,
     items: normalizeItems(body.items, kind === 'food').map(i => [i.id, i.qty]), lat, lng,
+    // Only present when used, so carts without a coupon hash exactly as before.
+    ...(coupon ? { coupon } : {}),
   })).digest('hex');
 }
 

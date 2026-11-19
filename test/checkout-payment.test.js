@@ -50,6 +50,16 @@ test('captured payment with correct signature, customer, cart and amount passes'
   assert.equal(result.id, 'pay_mock'); assert.equal(result.amount, 20500);
 });
 
+test('coupon is part of the cart fingerprint; carts without one hash as before', () => {
+  const { service } = setup();
+  const plain = service.fingerprint(body, 'grocery');
+  assert.equal(service.fingerprint({ ...body, coupon_code: '' }, 'grocery'), plain);
+  const withCoupon = service.fingerprint({ ...body, coupon_code: 'save50' }, 'grocery');
+  assert.notEqual(withCoupon, plain);
+  assert.equal(service.fingerprint({ ...body, coupon_code: ' SAVE50 ' }, 'grocery'), withCoupon);
+  assert.notEqual(service.fingerprint({ ...body, coupon_code: 'OTHER' }, 'grocery'), withCoupon);
+});
+
 test('rejects wrong signatures and malformed signatures', async () => {
   const { service, paid } = setup(); const request = await paid();
   for (const signature of ['invalid', '0'.repeat(64), null])
@@ -115,6 +125,11 @@ function groceryRoute({ invalid = false, prior = false, price = 10000 } = {}) {
     '../../services/storefront.service': { storeForDelivery: async () => ({ store: { id: 1 } }) },
     '../../services/otp.service': {}, '../../middlewares/customer.middleware': {},
     '../../services/rider-dispatch.service': { offerOrder: async () => {} },
+    '../../services/coupon.service': {
+      normalizeCode: code => (typeof code === 'string' ? code.trim().toUpperCase() : ''),
+      evaluate: async () => { throw Error('coupon not expected in this test'); },
+      recordUsage: async () => {},
+    },
   };
   load('src/routes/app/payment.routes.js', dependencies);
   return { create: handlers['/razorpay/create'], verify: handlers['/razorpay/verify'], stats: () => ({ transactions, commits, rollbacks, created }) };

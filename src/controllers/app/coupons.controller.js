@@ -1,42 +1,44 @@
-const Coupon      = require('../../models/coupon.model');
-const CouponUsage = require('../../models/coupon-usage.model');
-const { Op }      = require('sequelize');
+const { Op }        = require('sequelize');
+const Product       = require('../../models/product.model');
+const couponService = require('../../services/coupon.service');
+const checkout      = require('../../services/checkout-payment.service');
 
-const validate = async (req, res) => {
+// Cart subtotal in rupees from server-side prices, same as order placement.
+async function serverSubtotal(rawItems) {
+  const items = checkout.normalizeItems(rawItems);
+  const products = await Product.findAll({ attributes: ['id', 'price'], where: { id: { [Op.in]: items.map(i => i.id) } } });
+  const priceMap = Object.fromEntries(products.map(p => [p.id, Math.round(p.price / 100)]));
+  return items.reduce((sum, i) => {
+    if (priceMap[i.id] == null) throw checkout.fail(`Product #${i.id} not found`);
+    return sum + priceMap[i.id] * i.qty;
+  }, 0);
+}
+
+// GET /api/app/coupons — coupons this customer can use right now
+const list = async (req, res) => {
   try {
-    const { code, subtotal } = req.body;
-
-    const coupon = await Coupon.findOne({ where: { code, is_active: true } });
-    if (!coupon) return res.status(404).json({ message: 'Invalid coupon code' });
-
-    const now = new Date();
-    if (coupon.valid_from && now < new Date(coupon.valid_from))
-      return res.status(400).json({ message: 'Coupon not yet active' });
-    if (coupon.valid_till && now > new Date(coupon.valid_till))
-      return res.status(400).json({ message: 'Coupon has expired' });
-
-    if (coupon.min_order_amount && subtotal < coupon.min_order_amount)
-      return res.status(400).json({ message: `Minimum order amount is ₹${coupon.min_order_amount}` });
-
-    if (coupon.max_uses) {
-      const totalUsed = await CouponUsage.count({ where: { coupon_id: coupon.id } });
-      if (totalUsed >= coupon.max_uses) return res.status(400).json({ message: 'Coupon usage limit reached' });
-    }
-
-    if (coupon.max_uses_per_user) {
-      const userUsed = await CouponUsage.count({ where: { coupon_id: coupon.id, user_id: req.user.id } });
-      if (userUsed >= coupon.max_uses_per_user) return res.status(400).json({ message: 'You have already used this coupon' });
-    }
-
-    const discount =
-      coupon.type === 'percent'
-        ? Math.min((subtotal * coupon.value) / 100, coupon.max_discount ?? Infinity)
-        : coupon.value;
-
-    return res.json({ valid: true, discount, coupon: { code: coupon.code, type: coupon.type, value: coupon.value } });
+    return res.json({ coupons: await couponService.listForCustomer(req.user.id) });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
 };
 
-module.exports = { validate };
+// POST /api/app/coupons/validate — { code, items } (or legacy { code, subtotal })
+const validate = async (req, res) => {
+  try {
+    const { code, items } = req.body;
+    const subtotal = Array.isArray(items) ? await serverSubtotal(items) : Number(req.body.subtotal);
+    if (!Number.isFinite(subtotal) || subtotal <= 0) throw checkout.fail('Your cart is empty');
+    const { coupon, discount } = await couponService.evaluate({ code, userId: req.user.id, subtotal });
+    return res.json({
+      valid: true,
+      discount,
+      subtotal,
+      coupon: { code: coupon.code, type: coupon.type, value: coupon.type === 'flat' ? Math.floor(coupon.value / 100) : coupon.value },
+    });
+  } catch (err) {
+    return res.status(err.status ?? 500).json({ message: err.message });
+  }
+};
+
+module.exports = { list, validate };
