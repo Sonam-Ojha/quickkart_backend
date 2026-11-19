@@ -117,7 +117,7 @@ function groceryRoute({ invalid = false, prior = false, price = 10000 } = {}) {
     '../../services/rider-dispatch.service': { offerOrder: async () => {} },
   };
   load('src/routes/app/payment.routes.js', dependencies);
-  return { verify: handlers['/razorpay/verify'], stats: () => ({ transactions, commits, rollbacks, created }) };
+  return { create: handlers['/razorpay/create'], verify: handlers['/razorpay/verify'], stats: () => ({ transactions, commits, rollbacks, created }) };
 }
 
 test('invalid signature never opens a database transaction', async () => {
@@ -228,4 +228,13 @@ test('food paid order records gateway transaction inside the verification transa
   await svc.placeFoodOrder(3, { ...body, items: [{ menu_item_id: 7, qty: 2 }], restaurant_id: 8, payment_method: 'razorpay' }, { transaction, paymentId: 'pay_food', paidAmount: 20500 });
   assert.equal(payment.txnId, 'pay_food'); assert.equal(payment.status, 'paid');
   assert.equal(callbacks.length, 1);
+});
+
+test('amount-only old app requests receive an update instruction without creating payment', async () => {
+  const fixture = groceryRoute(), response = res();
+  await fixture.create({ body: { amount: 215, lat: 28.6, lng: 77.2 }, user: { id: 3 } }, response);
+  assert.equal(response.code, 426);
+  assert.equal(response.data.code, 'APP_UPDATE_REQUIRED');
+  assert.match(response.data.message, /Play Store/);
+  assert.equal(fixture.stats().transactions, 0);
 });

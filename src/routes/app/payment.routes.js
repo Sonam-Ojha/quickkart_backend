@@ -22,6 +22,9 @@ router.use(authenticateCustomer);
 router.post('/razorpay/create', async (req, res) => {
   try {
     const { lat, lng } = req.body;
+    if (!Array.isArray(req.body.items) && req.body.amount != null) {
+      return res.status(426).json({ code: 'APP_UPDATE_REQUIRED', message: 'Please update Jhatpats from the Play Store, then remove and re-add your cart items before paying.' });
+    }
     checkout.fingerprint(req.body, 'grocery');
     const items = checkout.normalizeItems(req.body.items);
     // Compute amount server-side — never trust the client-supplied amount.
