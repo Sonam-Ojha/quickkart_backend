@@ -89,9 +89,12 @@ function startServer() {
 // sync({ alter }) opens 50-100+ connections across all tables — this was
 // exhausting Hostinger's 500-connections/hour limit on every restart.
 const isProd = process.env.NODE_ENV === 'production';
+const schemaSyncDisabled = process.env.DB_SCHEMA_SYNC === 'false';
 const nonOverlappingTask = require('./src/services/non-overlapping-task');
 
-const dbInit = isProd
+const dbInit = schemaSyncDisabled
+  ? sequelize.authenticate()
+  : isProd
   ? sequelize.authenticate().then(() => require('./src/config/ensure-schema')())
   : sequelize.sync({ alter: { drop: false } });
 
@@ -130,10 +133,12 @@ function startReopenWatcher() {
 
 dbInit
   .then(() => {
-    console.log(isProd ? 'Database connected' : 'Database connected and synced');
-    require('./src/services/rider-dispatch.service').startSweeper();
-    require('./src/services/partner.service').startAcceptAlerts();
-    startReopenWatcher();
+    console.log(schemaSyncDisabled ? 'Database connected (schema sync disabled)' : isProd ? 'Database connected' : 'Database connected and synced');
+    if (process.env.RUN_BACKGROUND_JOBS !== 'false') {
+      require('./src/services/rider-dispatch.service').startSweeper();
+      require('./src/services/partner.service').startAcceptAlerts();
+      startReopenWatcher();
+    }
     startServer();
   })
   .catch((err) => {

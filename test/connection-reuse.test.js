@@ -57,3 +57,36 @@ test('independent background jobs do not block one another', async () => {
   resolve();
   await pending;
 });
+
+
+test('connection hooks count physical opens and lifetime without issuing queries or exposing credentials', () => {
+  const module = { exports: {} }, entries = [];
+  let now = 1000;
+  class FakeDate extends Date { static now() { return now; } }
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/config/db.js'), 'utf8'), {
+    module, Date: FakeDate,
+    console: { info: (...args) => entries.push(args.join(' ')) },
+    process: { pid: 42, env: { DB_NAME: 'test_name', DB_USER: 'test_user', DB_PASSWORD: 'test_secret', DB_HOST: 'test.invalid' } },
+    require(name) {
+      assert.equal(name, 'sequelize');
+      return { Sequelize: class { constructor(_name, _user, _password, options) { this.options = options; } } };
+    },
+  });
+  const hooks = module.exports.options.hooks;
+  const first = {}, second = {};
+  hooks.afterConnect(first);
+  now += 20000;
+  hooks.afterConnect(second);
+  hooks.afterDisconnect(first);
+  const messages = entries.map(entry => JSON.parse(entry.slice('[db-connection] '.length)));
+  assert.equal(messages[1].last60Minutes, 2);
+  assert.equal(messages[1].totalSinceBoot, 2);
+  assert.equal(messages[2].lifetimeMs, 20000);
+  assert.equal(messages[0].pid, 42);
+  now += 3600001;
+  hooks.afterConnect({});
+  const latest = JSON.parse(entries.at(-1).slice('[db-connection] '.length));
+  assert.equal(latest.last60Minutes, 1);
+  assert.equal(latest.totalSinceBoot, 3);
+  assert.ok(entries.every(entry => !/test_name|test_user|test_secret|test.invalid/.test(entry)));
+});
