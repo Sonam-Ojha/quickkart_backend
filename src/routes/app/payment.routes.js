@@ -1,6 +1,7 @@
 const router  = require('express').Router();
 const crypto  = require('crypto');
 const checkout = require('../../services/checkout-payment.service');
+const couponService = require('../../services/coupon.service');
 const { Op }        = require('sequelize');
 const Order         = require('../../models/order.model');
 const OrderItem     = require('../../models/order-item.model');
@@ -37,7 +38,10 @@ router.post('/razorpay/create', async (req, res) => {
       if (priceMap[pid] == null) return res.status(400).json({ message: `Product #${pid} not found` });
       subtotal += priceMap[pid] * (item.qty ?? 1);
     }
-    const computedTotal = subtotal + (subtotal >= 99 ? 0 : 25) + 5;
+    const { discount } = couponService.normalizeCode(req.body.coupon_code)
+      ? await couponService.evaluate({ code: req.body.coupon_code, userId: req.user.id, subtotal })
+      : { discount: 0 };
+    const computedTotal = subtotal - discount + (subtotal >= 99 ? 0 : 25) + 5;
 
     // Refuse before the customer pays, not after.
     const { store, located } = await storeForDelivery(lat, lng);
@@ -88,9 +92,23 @@ router.post('/razorpay/verify', async (req, res) => {
       subtotal += serverPrice * (item.qty ?? 1);
     }
 
+    // The coupon is part of the verified cart fingerprint, so it is the one the
+    // customer paid with. Re-check it under a lock before using it up.
+    let discount = 0;
+    let appliedCoupon = null;
+    if (couponService.normalizeCode(req.body.coupon_code)) {
+      try {
+        ({ coupon: appliedCoupon, discount } = await couponService.evaluate({
+          code: req.body.coupon_code, userId: req.user.id, subtotal, transaction: t,
+        }));
+      } catch (err) {
+        throw checkout.fail(`${err.message}. Contact support for payment reconciliation.`, 409);
+      }
+    }
+
     const delivery_fee_computed    = subtotal >= 99 ? 0 : 25;
     const handling_charge_computed = 5;
-    const total = subtotal + delivery_fee_computed + handling_charge_computed;
+    const total = subtotal - discount + delivery_fee_computed + handling_charge_computed;
 
     if (Math.round(total * 100) !== verified.amount) throw checkout.fail('Prices changed. Contact support for payment reconciliation.', 409);
 
@@ -125,13 +143,18 @@ router.post('/razorpay/verify', async (req, res) => {
       customerId:  req.user.id,
       storeId:     store?.id ?? null,
       addressId:   address?.id ?? null,
+      couponId:    appliedCoupon?.id ?? null,
       deliveryOtp,
       status:      'confirmed',
       subtotal,
       deliveryFee: delivery_fee_computed,
-      discount:    0,
+      discount,
       total,
     }, { transaction: t });
+
+    if (appliedCoupon) {
+      await couponService.recordUsage({ coupon: appliedCoupon, userId: req.user.id, orderId: order.id, discount, transaction: t });
+    }
 
     await OrderItem.bulkCreate(
       items.map(i => {

@@ -9,8 +9,7 @@ const Rider         = require('../../models/rider.model');
 const Address       = require('../../models/address.model');
 const Restaurant    = require('../../models/restaurant.model');
 const User          = require('../../models/user.model');
-const Coupon        = require('../../models/coupon.model');
-const CouponUsage   = require('../../models/coupon-usage.model');
+const couponService = require('../../services/coupon.service');
 const { Op }        = require('sequelize');
 const sequelize     = require('../../../src/config/db');
 const { sendSms }   = require('../../services/otp.service');
@@ -46,7 +45,8 @@ const place = async (req, res) => {
   let t;
   try {
     t = await sequelize.transaction();
-    const { items, address_id, coupon_code, payment_method = 'cod', lat, lng } = req.body;
+    const { items, address_id, payment_method = 'cod', lat, lng } = req.body;
+    const coupon_code = req.body.coupon_code ?? req.body.couponCode;
 
     if (!items || items.length === 0) {
       await t.rollback();
@@ -76,42 +76,13 @@ const place = async (req, res) => {
       subtotal += serverPrice * (item.qty ?? 1);
     }
 
-    // ── Server-side coupon validation ─────────────────────────────────────────
+    // ── Server-side coupon validation (locks the coupon row until commit) ──────
     let discount = 0;
     let appliedCoupon = null;
-    if (coupon_code) {
-      const coupon = await Coupon.findOne({ where: { code: coupon_code, isActive: true }, transaction: t });
-      if (!coupon) {
-        await t.rollback();
-        return res.status(400).json({ message: 'Invalid or expired coupon code' });
-      }
-      const now = new Date();
-      if (now < coupon.validFrom || now > coupon.validTo) {
-        await t.rollback();
-        return res.status(400).json({ message: 'Coupon is not valid at this time' });
-      }
-      // coupon.minOrder is stored in paise — convert to rupees for comparison.
-      const minOrderRupees = Math.round((coupon.minOrder ?? 0) / 100);
-      if (subtotal < minOrderRupees) {
-        await t.rollback();
-        return res.status(400).json({ message: `Minimum order value for this coupon is ₹${minOrderRupees}` });
-      }
-      if (coupon.usageLimit != null && coupon.usedCount >= coupon.usageLimit) {
-        await t.rollback();
-        return res.status(400).json({ message: 'Coupon usage limit reached' });
-      }
-      const userUsage = await CouponUsage.count({ where: { couponId: coupon.id, userId: req.user.id }, transaction: t });
-      if (userUsage >= (coupon.perUserLimit ?? 1)) {
-        await t.rollback();
-        return res.status(400).json({ message: 'You have already used this coupon' });
-      }
-      // coupon.value for flat type is in paise; convert. For percent type it's a percentage (0–100).
-      const couponValueRupees = coupon.type === 'flat' ? Math.round(coupon.value / 100) : null;
-      const maxDiscRupees     = coupon.maxDiscount != null ? Math.round(coupon.maxDiscount / 100) : Infinity;
-      discount = coupon.type === 'flat'
-        ? couponValueRupees
-        : Math.min(Math.floor(subtotal * coupon.value / 100), maxDiscRupees);
-      appliedCoupon = coupon;
+    if (couponService.normalizeCode(coupon_code)) {
+      ({ coupon: appliedCoupon, discount } = await couponService.evaluate({
+        code: coupon_code, userId: req.user.id, subtotal, transaction: t,
+      }));
     }
 
     const delivery_fee    = subtotal >= 99 ? 0 : 25;
@@ -177,6 +148,7 @@ const place = async (req, res) => {
       customerId: req.user.id,
       storeId:    store?.id ?? null,
       addressId:  address_id ?? null,
+      couponId:   appliedCoupon?.id ?? null,
       status:     'pending',
       subtotal,
       deliveryFee: delivery_fee,
@@ -203,13 +175,7 @@ const place = async (req, res) => {
 
     // Record coupon usage so it can't be reused beyond its limit
     if (appliedCoupon) {
-      await CouponUsage.create({
-        couponId:       appliedCoupon.id,
-        userId:         req.user.id,
-        orderId:        order.id,
-        discountAmount: discount,
-      }, { transaction: t });
-      await appliedCoupon.increment('usedCount', { transaction: t });
+      await couponService.recordUsage({ coupon: appliedCoupon, userId: req.user.id, orderId: order.id, discount, transaction: t });
     }
 
     // Quick-commerce: confirm immediately so the order can reach riders.
@@ -296,6 +262,7 @@ const cancel = async (req, res) => {
       if (!['pending', 'confirmed', 'preparing'].includes(current.status))
         throw checkout.fail('Order cannot be cancelled at this stage');
       await walletCheckout.refund(current, transaction);
+      await couponService.releaseForOrder(current.id, transaction);
       await current.update({ status: 'cancelled' }, { transaction });
       await OrderTimeline.create({ orderId: current.id, status: 'cancelled', note: req.body.reason || 'Cancelled by customer' }, { transaction });
       const items = await OrderItem.findAll({ where: { orderId: current.id }, transaction });
