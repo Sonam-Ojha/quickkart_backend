@@ -69,7 +69,7 @@ async function sendOtpEmail(email) {
   return { success: true, dev: false };
 }
 
-// ── Send OTP via Orbitel Bulk SMS (DLT-registered template) ──────────────────
+// ── Send OTP via Areach Bulk SMS (DLT-registered template) ───────────────────
 async function sendOtpSms(mobile) {
   // Store review account: save the fixed code, send no SMS, never leak the code.
   if (isReviewMobile(mobile)) {
@@ -81,12 +81,11 @@ async function sendOtpSms(mobile) {
   const otp = _generateOtp();
   await _saveOtp(mobile, otp);
 
-  const username   = process.env.ORBITEL_USERNAME;
-  const apiKey     = process.env.ORBITEL_API_KEY;
-  const sender     = process.env.ORBITEL_SENDER     || 'JHTPTS';
-  const templateId = process.env.ORBITEL_OTP_TEMPLATE_ID;
+  const apiKey     = process.env.AREACH_API_KEY;
+  const sender     = process.env.AREACH_SENDER     || 'JHTPTS';
+  const templateId = process.env.AREACH_OTP_TEMPLATE_ID || '1777179403136464198';
 
-  if (!username || !apiKey) {
+  if (!apiKey) {
     console.log(`[OTP DEV] mobile=${mobile} otp=${otp}`);
     return { success: true, dev: true, otp };
   }
@@ -97,19 +96,18 @@ async function sendOtpSms(mobile) {
   const text = `Your Jhatpats verification code is ${otp}. Valid for 10 minutes. Do not share it with anyone.`;
 
   const params = new URLSearchParams({
-    username,
-    apiKey,
-    from:       sender,
+    apikey:     apiKey,
+    sender,
     to:         mobile,
     text,
-    unicode:    'true',
-    ...(templateId ? { templateid: templateId } : {}),
+    type:       'OTP',
+    templateId,
   });
 
   return new Promise((resolve, reject) => {
-    const path = `/fe/api/v1/send?${params.toString()}`;
+    const path = `/v1/sms?${params.toString()}`;
     const options = {
-      hostname: 'bulksms.orbitel.in',
+      hostname: 'api.areach.in',
       path,
       method:   'GET',
     };
@@ -120,17 +118,17 @@ async function sendOtpSms(mobile) {
       res.on('end', () => {
         try {
           const json = JSON.parse(data);
-          // Orbitel success: state=SUBMIT_ACCEPTED or statusCode=200
           if (
-            json.state === 'SUBMIT_ACCEPTED' ||
-            json.statusCode === '200' ||
-            json.statusCode === 200 ||
-            json.status === 'success'
+            json.status === 'success' ||
+            json.status === 'Success' ||
+            json.StatusCode === '200' ||
+            json.StatusCode === 200 ||
+            res.statusCode === 200
           ) {
             resolve({ success: true, otp });
           } else {
-            const reason = json.description || json.message || json.Message || 'Orbitel SMS error';
-            console.error(`[OTP] Orbitel failed: ${reason} | raw: ${data}`);
+            const reason = json.message || json.Message || json.description || 'Areach SMS error';
+            console.error(`[OTP] Areach failed: ${reason} | raw: ${data}`);
             resolve({ success: false, error: reason });
           }
         } catch {
@@ -138,7 +136,7 @@ async function sendOtpSms(mobile) {
           if (res.statusCode === 200) {
             resolve({ success: true, otp });
           } else {
-            console.error('[OTP] Orbitel unexpected response:', data);
+            console.error('[OTP] Areach unexpected response:', data);
             resolve({ success: false, error: 'SMS provider error' });
           }
         }
