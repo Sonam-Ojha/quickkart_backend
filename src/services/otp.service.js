@@ -2,6 +2,9 @@ const https        = require('https');
 const nodemailer   = require('nodemailer');
 const { randomInt } = require('crypto');
 const Otp          = require('../models/otp.model');
+const OtpLog       = require('../models/otp-log.model');
+
+const _log = (fields) => OtpLog.create(fields).catch(() => {});
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -87,6 +90,7 @@ async function sendOtpSms(mobile) {
 
   if (!apiKey) {
     console.log(`[OTP DEV] mobile=${mobile} otp=${otp}`);
+    _log({ mobile, channel: 'sms', status: 'dev' });
     return { success: true, dev: true, otp };
   }
   // Always carry otp forward so the route layer can include it when the
@@ -125,18 +129,22 @@ async function sendOtpSms(mobile) {
             json.StatusCode === 200 ||
             res.statusCode === 200
           ) {
+            _log({ mobile, channel: 'sms', status: 'sent' });
             resolve({ success: true, otp });
           } else {
             const reason = json.message || json.Message || json.description || 'Areach SMS error';
             console.error(`[OTP] Areach failed: ${reason} | raw: ${data}`);
+            _log({ mobile, channel: 'sms', status: 'failed' });
             resolve({ success: false, error: reason });
           }
         } catch {
           // Some providers return plain-text success
           if (res.statusCode === 200) {
+            _log({ mobile, channel: 'sms', status: 'sent' });
             resolve({ success: true, otp });
           } else {
             console.error('[OTP] Areach unexpected response:', data);
+            _log({ mobile, channel: 'sms', status: 'failed' });
             resolve({ success: false, error: 'SMS provider error' });
           }
         }

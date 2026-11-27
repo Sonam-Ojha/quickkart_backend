@@ -25,6 +25,7 @@ const sequelize = require('./src/config/db');
 
 // ── Core models (no FK deps) ─────────────────────────────
 require('./src/models/otp.model');
+require('./src/models/otp-log.model');
 require('./src/models/account-deletion.model');
 require('./src/models/user.model');
 require('./src/models/country.model');

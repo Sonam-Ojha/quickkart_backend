@@ -29,6 +29,7 @@ const adminUploadRoutes     = require('./src/routes/admin/upload.routes');
 const adminRiderOpsRoutes        = require('./src/routes/admin/rider-ops.routes');
 const adminGeoRoutes             = require('./src/routes/admin/geo.routes');
 const adminAccountDeletionRoutes = require('./src/routes/admin/account-deletions.routes');
+const adminOtpLogsRoutes         = require('./src/routes/admin/otp-logs.routes');
 
 // ── Rider App Routes (used by quickkart_rider mobile/web app) ─
 const riderAuthRoutes        = require('./src/routes/rider/auth.routes');
@@ -125,6 +126,7 @@ app.use('/api/admin/food-orders',       require('./src/routes/admin/food-orders.
 // ── Restaurant partner panel API (/api/partner/...) ──────
 app.use('/api/partner', require('./src/routes/partner/partner.routes'));
 app.use('/api/admin/account-deletions', adminAccountDeletionRoutes);
+app.use('/api/admin/otp-logs',          adminOtpLogsRoutes);
 app.use('/api/admin/notifications',       require('./src/routes/admin/notifications.routes'));
 app.use('/api/admin/admin-notifications', require('./src/routes/admin/admin-notifications.routes'));
 
