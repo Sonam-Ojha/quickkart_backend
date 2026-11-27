@@ -1,7 +1,8 @@
 const router     = require('express').Router();
 const { Op, fn, col, literal } = require('sequelize');
 const OtpLog     = require('../../models/otp-log.model');
-const { authenticate, requireAdmin } = require('../../middleware/auth.middleware');
+const { authenticate }  = require('../../middlewares/auth.middleware');
+const { requireAdmin }  = require('../../middlewares/admin.middleware');
 
 const auth = [authenticate, requireAdmin];
 
