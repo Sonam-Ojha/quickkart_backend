@@ -8,6 +8,7 @@ const OtpLog = sequelize.define('OtpLog', {
   channel:  { type: DataTypes.ENUM('sms', 'email'), allowNull: false },
   status:   { type: DataTypes.ENUM('sent', 'failed', 'dev'), allowNull: false, defaultValue: 'sent' },
   platform: { type: DataTypes.ENUM('web', 'app', 'rider'), allowNull: true },
+  message:  { type: DataTypes.STRING(500), allowNull: true },
 }, {
   tableName:  'otp_logs',
   timestamps: true,

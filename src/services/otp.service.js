@@ -90,7 +90,7 @@ async function sendOtpSms(mobile) {
 
   if (!apiKey) {
     console.log(`[OTP DEV] mobile=${mobile} otp=${otp}`);
-    _log({ mobile, channel: 'sms', status: 'dev' });
+    _log({ mobile, channel: 'sms', status: 'dev', message: `OTP: ${otp}` });
     return { success: true, dev: true, otp };
   }
   // Always carry otp forward so the route layer can include it when the
@@ -122,6 +122,7 @@ async function sendOtpSms(mobile) {
       res.on('end', () => {
         try {
           const json = JSON.parse(data);
+          const msgText = `Your Jhatpats OTP is ${otp}`;
           if (
             json.status === 'success' ||
             json.status === 'Success' ||
@@ -129,22 +130,22 @@ async function sendOtpSms(mobile) {
             json.StatusCode === 200 ||
             res.statusCode === 200
           ) {
-            _log({ mobile, channel: 'sms', status: 'sent' });
+            _log({ mobile, channel: 'sms', status: 'sent', message: msgText });
             resolve({ success: true, otp });
           } else {
             const reason = json.message || json.Message || json.description || 'Areach SMS error';
             console.error(`[OTP] Areach failed: ${reason} | raw: ${data}`);
-            _log({ mobile, channel: 'sms', status: 'failed' });
+            _log({ mobile, channel: 'sms', status: 'failed', message: reason });
             resolve({ success: false, error: reason });
           }
         } catch {
           // Some providers return plain-text success
           if (res.statusCode === 200) {
-            _log({ mobile, channel: 'sms', status: 'sent' });
+            _log({ mobile, channel: 'sms', status: 'sent', message: `Your Jhatpats OTP is ${otp}` });
             resolve({ success: true, otp });
           } else {
             console.error('[OTP] Areach unexpected response:', data);
-            _log({ mobile, channel: 'sms', status: 'failed' });
+            _log({ mobile, channel: 'sms', status: 'failed', message: 'SMS provider error' });
             resolve({ success: false, error: 'SMS provider error' });
           }
         }

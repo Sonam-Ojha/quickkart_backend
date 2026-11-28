@@ -129,7 +129,7 @@ function startReopenWatcher() {
     } catch (e) {
       console.error('[SERVICE] reopen watcher error:', e.message);
     }
-  }), 60 * 1000); // check every minute
+  }), 5 * 60 * 1000); // check every 5 minutes
 }
 
 dbInit

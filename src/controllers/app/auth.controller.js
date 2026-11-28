@@ -150,6 +150,7 @@ const otpLogin = async (req, res) => {
 
     return res.json({
       token: signToken(user),
+      isNewUser,
       user: { id: user.id, name: user.name, mobile: user.mobile, email: user.email, walletBalance: user.walletBalance ?? 0 },
     });
   } catch (err) {

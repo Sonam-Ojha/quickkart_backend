@@ -1,6 +1,7 @@
 const router     = require('express').Router();
 const { Op, fn, col, literal } = require('sequelize');
 const OtpLog     = require('../../models/otp-log.model');
+const User       = require('../../models/user.model');
 const { authenticate }  = require('../../middlewares/auth.middleware');
 const { requireAdmin }  = require('../../middlewares/admin.middleware');
 
@@ -72,6 +73,41 @@ router.get('/by-user', auth, async (req, res) => {
     });
 
     res.json({ rows, totalUsers, page: Number(page), limit: Number(limit) });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// GET /api/admin/otp-logs/list?from=&to=&page=&limit=
+router.get('/list', auth, async (req, res) => {
+  try {
+    const { from, to, page = 1, limit = 50 } = req.query;
+    const where = {};
+    if (from || to) {
+      where.created_at = {};
+      if (from) where.created_at[Op.gte] = new Date(from);
+      if (to)   where.created_at[Op.lte] = new Date(to + 'T23:59:59Z');
+    }
+
+    const { count, rows } = await OtpLog.findAndCountAll({
+      where,
+      order: [['created_at', 'DESC']],
+      limit:  Number(limit),
+      offset: (Number(page) - 1) * Number(limit),
+      raw: true,
+    });
+
+    // Attach user name by looking up mobile in users table
+    const mobiles = [...new Set(rows.map(r => r.mobile).filter(Boolean))];
+    const users = mobiles.length
+      ? await User.findAll({ where: { mobile: { [Op.in]: mobiles } }, attributes: ['mobile', 'name'], raw: true })
+      : [];
+    const nameMap = Object.fromEntries(users.map(u => [u.mobile, u.name]));
+
+    const enriched = rows.map(r => ({
+      ...r,
+      userName: r.mobile ? (nameMap[r.mobile] || null) : null,
+    }));
+
+    res.json({ rows: enriched, total: count, page: Number(page), limit: Number(limit) });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
